@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "db",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/sandbox.exe",
+            "environment": [
+                {
+                    "name": "RUST_BACKTRACE",
+                    "value": "1"
+                }
+            ],
+            "cwd": "${workspaceFolder}/examples/sandbox",
+            "console": "integratedTerminal",
+            "preLaunchTask": "build sandbox"
+        }
+    ]
+}

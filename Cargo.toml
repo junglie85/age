@@ -1,0 +1,11 @@
+[workspace]
+members = ["age", "examples/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+
+[workspace.dependencies]
+age = { version = "0.1.0", path = "./age" }
+
+winit = "0.29.10"

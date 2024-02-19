@@ -1,8 +1,7 @@
 [package]
-name = "sandbox"
+name = "age-renderer"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
 age.workspace = true
-age-renderer.workspace = true

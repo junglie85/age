@@ -26,6 +26,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "age-renderer"
+version = "0.1.0"
+dependencies = [
+ "age",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -691,6 +698,7 @@ name = "sandbox"
 version = "0.1.0"
 dependencies = [
  "age",
+ "age-renderer",
 ]
 
 [[package]]

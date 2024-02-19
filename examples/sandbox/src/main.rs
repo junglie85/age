@@ -1,6 +1,7 @@
 use std::process::ExitCode;
 
 use age::{App, Error, Game};
+use age_renderer::{Renderer, RendererCtx};
 
 struct Sandbox;
 
@@ -10,6 +11,7 @@ impl Game for Sandbox {
     }
 
     fn on_update(&mut self, ctx: &mut age::Ctx) {
+        ctx.do_thing();
         if ctx.exit_requested() {
             ctx.exit();
         }
@@ -17,5 +19,5 @@ impl Game for Sandbox {
 }
 
 fn main() -> ExitCode {
-    App::new().run::<Sandbox>()
+    App::new().with_plugin::<Renderer>().run::<Sandbox>()
 }

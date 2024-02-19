@@ -1,5 +1,5 @@
 [workspace]
-members = ["age", "examples/*"]
+members = ["age", "age-renderer", "examples/*"]
 
 [workspace.package]
 version = "0.1.0"
@@ -7,5 +7,6 @@ edition = "2021"
 
 [workspace.dependencies]
 age = { version = "0.1.0", path = "./age" }
+age-renderer = { version = "0.1.0", path = "./age-renderer" }
 
 winit = "0.29.10"

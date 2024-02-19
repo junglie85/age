@@ -5,4 +5,3 @@ edition.workspace = true
 
 [dependencies]
 age.workspace = true
-age-renderer.workspace = true

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use winit::{dpi::LogicalSize, event_loop::ControlFlow};
 
 use crate::error::Error;
@@ -17,16 +19,18 @@ impl Sys {
         let w = winit::window::WindowBuilder::new()
             .with_title("age")
             .with_inner_size(size)
+            .with_visible(false)
             .build(self.el.as_ref().unwrap())?;
-        Ok(Window { _w: w })
+        Ok(Window { w: Arc::new(w) })
     }
 
     pub(crate) fn run<F>(mut self, mut handler: F) -> Result<(), Error>
     where
-        F: FnMut(Event, &mut SysCtx),
+        F: FnMut(Event, &mut Platform) -> Result<(), Error>,
     {
         let el = self.el.take().unwrap();
-        let mut ctx = SysCtx::default();
+        let mut platform = Platform::default();
+        let mut result = Ok(());
         el.run(|e, el| {
             el.set_control_flow(ControlFlow::Poll);
 
@@ -35,42 +39,87 @@ impl Sys {
                 winit::event::Event::WindowEvent { event: e, .. } => match e {
                     winit::event::WindowEvent::CloseRequested => Some(Event::ExitRequested),
 
+                    winit::event::WindowEvent::RedrawRequested => Some(Event::Update),
+
                     _ => None,
                 },
+
+                winit::event::Event::Resumed => Some(Event::PlatformReady),
 
                 _ => None,
             };
 
             if let Some(event) = event {
-                handler(event, &mut ctx);
-                if ctx.exit {
+                result = handler(event, &mut platform);
+                if platform.exit || result.is_err() {
                     el.exit();
                 }
             }
         })?;
 
-        Ok(())
+        result
     }
 }
 
 #[derive(Default)]
-pub(crate) struct SysCtx {
+pub(crate) struct Platform {
     exit: bool,
 }
 
-impl SysCtx {
+impl Platform {
     pub(crate) fn exit(&mut self) {
         self.exit = true;
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct Window {
-    _w: winit::window::Window,
+    w: Arc<winit::window::Window>,
+}
+
+impl Window {
+    pub(crate) fn height(&self) -> u32 {
+        self.w.inner_size().height
+    }
+
+    pub(crate) fn width(&self) -> u32 {
+        self.w.inner_size().width
+    }
+
+    pub(crate) fn post_present(&self) {
+        self.w.request_redraw();
+    }
+
+    pub(crate) fn pre_present(&self) {
+        self.w.pre_present_notify();
+    }
+
+    pub(crate) fn set_visible(&self, visible: bool) {
+        self.w.set_visible(visible);
+    }
+}
+
+impl raw_window_handle::HasDisplayHandle for Window {
+    fn display_handle(
+        &self,
+    ) -> Result<raw_window_handle::DisplayHandle<'_>, raw_window_handle::HandleError> {
+        self.w.display_handle()
+    }
+}
+
+impl raw_window_handle::HasWindowHandle for Window {
+    fn window_handle(
+        &self,
+    ) -> Result<raw_window_handle::WindowHandle<'_>, raw_window_handle::HandleError> {
+        self.w.window_handle()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Event {
     ExitRequested,
+    PlatformReady,
+    Update,
 }
 
 impl From<winit::error::EventLoopError> for Error {

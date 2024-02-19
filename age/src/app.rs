@@ -1,66 +1,46 @@
-use std::{any::TypeId, collections::HashMap, process::ExitCode};
-
 use crate::{
     error::Error,
-    plugin::{CreatePlugin, Plugins},
+    renderer::Renderer,
     sys::{Event, Sys},
-    Ctx, Game, Plugin,
+    Engine, Game,
 };
 
-pub struct App {
-    plugins: Plugins,
-}
-
-impl App {
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        Self {
-            plugins: Plugins::default(),
-        }
-    }
-
-    pub fn run<G: Game>(self) -> ExitCode {
-        match run::<G>(self.plugins) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(err) => {
-                eprintln!("{err}");
-                ExitCode::FAILURE
-            }
-        }
-    }
-
-    pub fn with_plugin<P: CreatePlugin + 'static>(mut self) -> Self {
-        self.plugins.push::<P>();
-        self
-    }
-}
-
-fn run<G: Game>(mut plugins: Plugins) -> Result<(), Error> {
+pub(crate) fn run<G: Game>() -> Result<(), Error> {
+    let width = 1920;
+    let height = 1080;
     let sys = Sys::init()?;
-    let window = sys.create_window(1920, 1080)?;
+    let window = sys.create_window(width, height)?;
+    let mut renderer = Renderer::new()?;
+    let backbuffer = renderer.create_backbuffer(/* width, height */);
 
-    // We create temporary plugins then swap it with the real plugins after on_start has been called
-    // because we cannot have more than one exclusive borrow on ctx. This means that get_plugin and
-    // get_plugin_mut cannot be called during on_start.
-    let temp_plugins = Plugins::default();
-    let mut ctx = Ctx::new(window, temp_plugins);
-    plugins.on_start(&mut ctx)?;
-    std::mem::swap(&mut plugins, &mut ctx.plugins);
+    let mut age = Engine::new(&backbuffer);
+    let mut game = G::on_start(&mut age)?;
 
-    let mut game = G::on_start(&mut ctx)?;
-
-    sys.run(|event, sys| {
+    sys.run(|event, platform| {
         match event {
-            Event::ExitRequested => ctx.exit_requested = true,
+            Event::ExitRequested => game.on_exit_requested(&mut age),
+
+            Event::PlatformReady => {
+                renderer.attach_to_window(window.clone())?;
+                window.set_visible(true);
+            }
+
+            Event::Update => {
+                age.set_draw_target(&backbuffer);
+                game.on_update(&mut age);
+                renderer.submit(age.draws.clone(), &backbuffer);
+                window.pre_present();
+                renderer.present();
+                window.post_present();
+                age.draws.clear();
+            }
         };
 
-        game.on_update(&mut ctx);
-
-        if ctx.exit {
-            sys.exit();
-        } else {
-            ctx.exit_requested = false;
+        if age.exit {
+            platform.exit();
         }
+
+        Ok(())
     })?;
 
     Ok(())

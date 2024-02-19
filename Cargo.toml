@@ -1,5 +1,6 @@
 [workspace]
-members = ["age", "age-renderer", "examples/*"]
+members = ["age", "examples/*"]
+resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
@@ -7,6 +8,8 @@ edition = "2021"
 
 [workspace.dependencies]
 age = { version = "0.1.0", path = "./age" }
-age-renderer = { version = "0.1.0", path = "./age-renderer" }
 
+pollster = "0.3.0"
+raw-window-handle = "0.6.0"
+wgpu = "0.19.1"
 winit = "0.29.10"

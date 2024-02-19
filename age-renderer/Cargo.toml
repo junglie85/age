@@ -1,7 +1,0 @@
-[package]
-name = "age-renderer"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-age.workspace = true

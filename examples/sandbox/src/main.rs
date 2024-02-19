@@ -1,23 +1,19 @@
 use std::process::ExitCode;
 
-use age::{App, Error, Game};
-use age_renderer::{Renderer, RendererCtx};
+use age::{Color, Engine, Error, Game};
 
 struct Sandbox;
 
 impl Game for Sandbox {
-    fn on_start(_ctx: &mut age::Ctx) -> Result<Self, Error> {
+    fn on_start(_age: &mut Engine) -> Result<Self, Error> {
         Ok(Self)
     }
 
-    fn on_update(&mut self, ctx: &mut age::Ctx) {
-        ctx.do_thing();
-        if ctx.exit_requested() {
-            ctx.exit();
-        }
+    fn on_update(&mut self, age: &mut Engine) {
+        age.clear(Color::RED);
     }
 }
 
 fn main() -> ExitCode {
-    App::new().with_plugin::<Renderer>().run::<Sandbox>()
+    age::run::<Sandbox>()
 }

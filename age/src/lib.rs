@@ -1,54 +1,92 @@
-pub use app::App;
+use std::process::ExitCode;
+
+pub use color::*;
 pub use error::Error;
-use plugin::Plugins;
-pub use plugin::{CreatePlugin, Plugin};
-use sys::Window;
+pub use graphics::Sprite;
+use renderer::{CommandBuffer, DrawTarget};
 
 mod app;
+mod color;
 mod error;
-mod plugin;
+mod graphics;
+mod renderer;
 mod sys;
 
-pub trait Game<T = Self> {
-    fn on_start(ctx: &mut Ctx) -> Result<T, Error>;
-
-    fn on_update(&mut self, ctx: &mut Ctx);
-}
-
-pub struct Ctx {
-    exit_requested: bool,
-    exit: bool,
-    _window: Window,
-    plugins: Plugins,
-}
-
-impl Ctx {
-    fn new(window: Window, plugins: Plugins) -> Self {
-        Self {
-            exit_requested: false,
-            exit: false,
-            _window: window,
-            plugins,
+pub fn run<G: Game>() -> ExitCode {
+    match app::run::<G>() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::FAILURE
         }
     }
+}
 
-    pub fn exit_requested(&self) -> bool {
-        self.exit_requested
+pub trait Game<T = Self> {
+    fn on_start(age: &mut Engine) -> Result<T, Error>;
+
+    fn on_update(&mut self, age: &mut Engine);
+
+    fn on_exit_requested(&mut self, age: &mut Engine) {
+        age.exit();
+    }
+}
+
+pub struct Engine {
+    exit: bool,
+
+    // Graphics
+    draw_target: DrawTarget,
+    clear_color: Option<Color>,
+    needs_render_pass: bool,
+    draws: CommandBuffer,
+}
+
+impl Engine {
+    fn new<T: Into<DrawTarget>>(draw_target: T) -> Self {
+        Self {
+            exit: false,
+
+            // Graphics.
+            draw_target: draw_target.into(),
+            clear_color: None,
+            needs_render_pass: true,
+            draws: CommandBuffer::default(),
+        }
+    }
+}
+
+// ----- Graphics -----
+impl Engine {
+    pub fn clear(&mut self, color: Color) {
+        self.clear_color = Some(color);
+        self.needs_render_pass = true;
+        self.push_draw_command();
     }
 
+    pub fn set_draw_target<T: Into<DrawTarget>>(&mut self, target: T) {
+        self.draw_target = target.into();
+        self.clear_color = None;
+        self.needs_render_pass = true;
+    }
+
+    fn push_draw_command(&mut self) {
+        if self.needs_render_pass {
+            self.needs_render_pass = false;
+            self.draws
+                .set_render_pass(self.draw_target.texture(), self.clear_color);
+        }
+
+        // self.draws.push(DrawCommand {
+        //     target: self.draw_target.texture().clone(),
+        //     clear_color: self.clear_color,
+        // });
+    }
+}
+
+// ----- Platform -----
+impl Engine {
     pub fn exit(&mut self) {
         self.exit = true;
-    }
-
-    pub fn get_plugin<P: Plugin + 'static>(&self) -> &P {
-        self.plugins.get_plugin::<P>()
-    }
-
-    pub fn get_plugin_mut<P: Plugin + 'static>(&mut self) -> &mut P {
-        self.plugins.get_plugin_mut::<P>()
-    }
-
-    pub(crate) fn start_plugins(&mut self) {
-        self.plugins.on_start(self);
     }
 }

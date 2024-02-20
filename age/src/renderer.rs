@@ -7,6 +7,7 @@ pub(crate) struct Renderer<'window> {
     adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
+    belt: wgpu::util::StagingBelt,
     surface: Option<wgpu::Surface<'window>>,
     config: Option<wgpu::SurfaceConfiguration>,
     frame: Option<wgpu::SurfaceTexture>,
@@ -77,6 +78,8 @@ impl<'window> Renderer<'window> {
                 return Err("failed to get graphics queue".into());
             }
         };
+
+        let belt = wgpu::util::StagingBelt::new(1024);
 
         let backbuffer_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("window"),
@@ -152,6 +155,7 @@ impl<'window> Renderer<'window> {
             adapter,
             device,
             queue,
+            belt,
             surface: None,
             config: None,
             frame: None,
@@ -204,6 +208,11 @@ impl<'window> Renderer<'window> {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("submit"),
             });
+
+        // todo: align indices (u16).
+        // todo: resize vbo and ibo
+        // todo: write vertices to global vbo
+        // todo: write indices to global ibo
 
         for pass in buf.passes.iter() {
             let mut _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -388,18 +397,40 @@ struct TextureInner {
 
 #[derive(Default, Clone)]
 pub(crate) struct CommandBuffer {
-    passes: Vec<RenderPass>,
+    current_pass: Option<usize>,
     draws: Vec<DrawCommand>,
+    passes: Vec<RenderPass>,
+    total_indices: usize,
+    total_vertices: usize,
 }
 
 impl CommandBuffer {
     pub(crate) fn clear(&mut self) {
-        self.passes.clear();
+        self.current_pass = None;
         self.draws.clear();
+        self.passes.clear();
+        self.total_indices = 0;
+        self.total_vertices = 0;
+    }
+
+    pub(crate) fn record(&mut self, draw: DrawCommand) {
+        if self.current_pass.is_none() {
+            panic!("cannot record draw command without a render pass");
+        }
+
+        self.total_indices += draw.indices.len();
+        self.total_vertices += draw.vertices.len();
+        self.draws.push(draw);
+        self.passes[self.current_pass].draw_count += 1;
     }
 
     pub(crate) fn set_render_pass(&mut self, target: &Texture, clear_color: Option<Color>) {
-        // todo: some accounting if we already have a render pass.
+        if self.current_pass.is_none() {
+            self.current_pass = Some(0);
+        } else {
+            self.current_pass += 1;
+        }
+
         self.passes.push(RenderPass {
             target: target.clone(),
             clear_color,
@@ -415,5 +446,13 @@ pub(crate) struct RenderPass {
     pub(crate) draw_count: usize,
 }
 
-#[derive(Clone)]
-pub(crate) struct DrawCommand {}
+#[derive(Debug, Default, Clone)]
+pub(crate) struct DrawCommand {
+    pub(crate) vertices: Vec<Vertex>,
+    pub(crate) indices: Vec<u16>,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct Vertex {
+    pub(crate) pos: [f32; 2],
+}

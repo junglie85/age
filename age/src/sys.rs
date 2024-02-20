@@ -2,7 +2,13 @@ use std::sync::Arc;
 
 use winit::{dpi::LogicalSize, event_loop::ControlFlow};
 
-use crate::error::Error;
+use crate::{error::Error, Engine};
+
+impl Engine {
+    pub fn exit(&mut self) {
+        self.exit = true;
+    }
+}
 
 pub(crate) struct Sys {
     el: Option<winit::event_loop::EventLoop<()>>,

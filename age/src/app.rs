@@ -1,6 +1,6 @@
 use crate::{
     error::Error,
-    renderer::Renderer,
+    renderer::{Renderer, Surface},
     sys::{Event, Sys},
     Engine, Game,
 };
@@ -11,6 +11,7 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
     let sys = Sys::init()?;
     let window = sys.create_window(width, height)?;
     let mut renderer = Renderer::new()?;
+    let mut surface = Surface::default();
     let backbuffer = renderer.create_backbuffer(/* width, height */);
 
     let mut age = Engine::new(&backbuffer);
@@ -21,16 +22,16 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
             Event::ExitRequested => game.on_exit_requested(&mut age),
 
             Event::PlatformReady => {
-                renderer.attach_to_window(window.clone())?;
+                surface.init(&renderer, &window)?;
                 window.set_visible(true);
             }
 
             Event::Update => {
                 age.set_draw_target(&backbuffer);
                 game.on_update(&mut age);
-                renderer.submit(age.draws.clone(), &backbuffer);
+                renderer.submit(age.draws.clone(), &backbuffer, &mut surface);
                 window.pre_present();
-                renderer.present();
+                surface.present();
                 window.post_present();
                 age.draws.clear();
             }

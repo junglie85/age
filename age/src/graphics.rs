@@ -1,5 +1,5 @@
 use crate::{
-    renderer::{DrawCommand, DrawTarget, Texture, Vertex},
+    renderer::{DrawCommand, DrawTarget, GeometryVertex, Texture},
     Color, Engine,
 };
 
@@ -34,7 +34,7 @@ impl Engine {
     fn push_render_pass(&mut self) {
         self.needs_render_pass = false;
         self.draws
-            .set_render_pass(self.draw_target.texture(), self.clear_color);
+            .set_render_pass(self.draw_target.texture_view(), self.clear_color);
     }
 }
 
@@ -47,11 +47,11 @@ pub struct Sprite {
 
 impl Sprite {
     const INDICES: [u16; 6] = [0, 1, 2, 0, 2, 3];
-    const VERTICES: [Vertex; 4] = [
-        Vertex { pos: [0.0, 0.0] },
-        Vertex { pos: [0.0, 0.5] },
-        Vertex { pos: [0.5, 0.5] },
-        Vertex { pos: [0.5, 0.0] },
+    const VERTICES: [GeometryVertex; 4] = [
+        GeometryVertex { pos: [0.0, 0.0] },
+        GeometryVertex { pos: [0.0, 0.5] },
+        GeometryVertex { pos: [0.5, 0.5] },
+        GeometryVertex { pos: [0.5, 0.0] },
     ];
 
     pub fn new(width: u32, height: u32) -> Self {
@@ -74,7 +74,7 @@ impl Sprite {
         todo!()
     }
 
-    pub(crate) fn vertices(&self) -> &[Vertex] {
+    pub(crate) fn vertices(&self) -> &[GeometryVertex] {
         &Self::VERTICES
     }
 

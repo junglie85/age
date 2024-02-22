@@ -2,12 +2,13 @@ use std::process::ExitCode;
 
 pub use color::*;
 pub use error::Error;
-pub use graphics::Sprite;
-use renderer::{CommandBuffer, DrawTarget};
+pub use graphics::{Graphics, Sprite};
+use renderer::Renderer;
 
 mod app;
 mod color;
 mod error;
+mod gen_vec;
 mod graphics;
 mod renderer;
 mod sys;
@@ -34,25 +35,16 @@ pub trait Game<T = Self> {
 
 pub struct Engine {
     exit: bool,
-
-    // Graphics
-    // todo: Encapsulate in a graphics context?
-    draw_target: DrawTarget,
-    clear_color: Option<Color>,
-    needs_render_pass: bool,
-    draws: CommandBuffer,
+    pub renderer: Renderer,
+    pub graphics: Graphics,
 }
 
 impl Engine {
-    fn new<T: Into<DrawTarget>>(draw_target: T) -> Self {
+    fn new(renderer: Renderer, graphics: Graphics) -> Self {
         Self {
             exit: false,
-
-            // Graphics.
-            draw_target: draw_target.into(),
-            clear_color: None,
-            needs_render_pass: true,
-            draws: CommandBuffer::default(),
+            renderer,
+            graphics,
         }
     }
 }

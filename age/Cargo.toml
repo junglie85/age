@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+bitflags.workspace = true
 pollster.workspace = true
 raw-window-handle.workspace = true
 wgpu.workspace = true

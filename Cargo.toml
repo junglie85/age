@@ -9,6 +9,7 @@ edition = "2021"
 [workspace.dependencies]
 age = { version = "0.1.0", path = "./age" }
 
+bitflags = "2.4.2"
 pollster = "0.3.0"
 raw-window-handle = "0.6.0"
 wgpu = "0.19.1"

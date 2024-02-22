@@ -1,6 +1,10 @@
-use std::{borrow::Cow, collections::VecDeque, ops::Index, sync::Arc};
+use std::{any::TypeId, borrow::Cow, collections::HashMap};
 
-use crate::{sys::Window, Color, Error};
+use crate::{
+    gen_vec::{GenIdx, GenVec},
+    sys::Window,
+    Color, Error,
+};
 
 #[derive(Default)]
 pub(crate) struct Surface<'window> {
@@ -62,7 +66,7 @@ impl<'window> Surface<'window> {
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct BindGroupId(GenIdx);
+pub struct BindGroupId(GenIdx);
 
 impl BindGroupId {
     pub const INVALID: Self = Self(GenIdx::INVALID);
@@ -70,7 +74,7 @@ impl BindGroupId {
 
 impl std::fmt::Debug for BindGroupId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("BindGroupId").field(&self.0 .0).finish()
+        f.debug_tuple("BindGroupId").field(&self.0.idx()).finish()
     }
 }
 
@@ -95,7 +99,7 @@ impl BindGroupLayoutId {
 impl std::fmt::Debug for BindGroupLayoutId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("BindGroupLayoutId")
-            .field(&self.0 .0)
+            .field(&self.0.idx())
             .finish()
     }
 }
@@ -124,7 +128,44 @@ impl From<&BindingType> for wgpu::BindingType {
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct PipelineLayoutId(GenIdx);
+pub struct BufferId(GenIdx);
+
+impl BufferId {
+    pub const INVALID: Self = Self(GenIdx::INVALID);
+}
+
+impl std::fmt::Debug for BufferId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("BufferId").field(&self.0.idx()).finish()
+    }
+}
+
+pub struct BufferDesc<'desc> {
+    pub label: Option<&'desc str>,
+    pub size: usize,
+    pub usage: BufferUsages,
+}
+
+bitflags::bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct BufferUsages: u32 {
+        const INDEX = 1 << 0;
+        const VERTEX = 1 << 1;
+    }
+}
+
+impl From<BufferUsages> for wgpu::BufferUsages {
+    fn from(value: BufferUsages) -> Self {
+        match value {
+            BufferUsages::INDEX => wgpu::BufferUsages::INDEX,
+            BufferUsages::VERTEX => wgpu::BufferUsages::VERTEX,
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PipelineLayoutId(GenIdx);
 
 impl PipelineLayoutId {
     pub const INVALID: Self = Self(GenIdx::INVALID);
@@ -132,7 +173,9 @@ impl PipelineLayoutId {
 
 impl std::fmt::Debug for PipelineLayoutId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("PipelineLayoutId").field(&self.0 .0).finish()
+        f.debug_tuple("PipelineLayoutId")
+            .field(&self.0.idx())
+            .finish()
     }
 }
 
@@ -142,7 +185,7 @@ pub struct PipelineLayoutDesc<'desc> {
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct RenderPipelineId(GenIdx);
+pub struct RenderPipelineId(GenIdx);
 
 impl RenderPipelineId {
     pub const INVALID: Self = Self(GenIdx::INVALID);
@@ -150,16 +193,18 @@ impl RenderPipelineId {
 
 impl std::fmt::Debug for RenderPipelineId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("RenderPipelineId").field(&self.0 .0).finish()
+        f.debug_tuple("RenderPipelineId")
+            .field(&self.0.idx())
+            .finish()
     }
 }
 
 pub struct RenderPipelineDesc<'desc> {
-    label: Option<&'desc str>,
-    layout: PipelineLayoutId,
-    shader: ShaderId,
-    vs_main: &'desc str,
-    fs_main: &'desc str,
+    pub label: Option<&'desc str>,
+    pub layout: PipelineLayoutId,
+    pub shader: ShaderId,
+    pub vs_main: &'desc str,
+    pub fs_main: &'desc str,
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
@@ -171,7 +216,7 @@ impl SamplerId {
 
 impl std::fmt::Debug for SamplerId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("SamplerId").field(&self.0 .0).finish()
+        f.debug_tuple("SamplerId").field(&self.0.idx()).finish()
     }
 }
 
@@ -222,7 +267,7 @@ impl ShaderId {
 
 impl std::fmt::Debug for ShaderId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("ShaderId").field(&self.0 .0).finish()
+        f.debug_tuple("ShaderId").field(&self.0.idx()).finish()
     }
 }
 
@@ -240,7 +285,7 @@ impl TextureId {
 
 impl std::fmt::Debug for TextureId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("TextureId").field(&self.0 .0).finish()
+        f.debug_tuple("TextureId").field(&self.0.idx()).finish()
     }
 }
 
@@ -260,7 +305,7 @@ impl TextureViewId {
 
 impl std::fmt::Debug for TextureViewId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("TextureViewId").field(&self.0 .0).finish()
+        f.debug_tuple("TextureViewId").field(&self.0.idx()).finish()
     }
 }
 
@@ -300,7 +345,29 @@ impl TryFrom<wgpu::TextureFormat> for TextureFormat {
     }
 }
 
-pub(crate) struct Renderer {
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct VertexBufferLayoutId(GenIdx);
+
+impl VertexBufferLayoutId {
+    pub const INVALID: Self = Self(GenIdx::INVALID);
+}
+
+impl std::fmt::Debug for VertexBufferLayoutId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("VertexBufferLayoutId")
+            .field(&self.0.idx())
+            .finish()
+    }
+}
+
+pub struct VertexBufferLayoutDesc {}
+
+struct VertexBufferlayout {
+    ty: TypeId,
+    layout: wgpu::VertexBufferLayout<'static>,
+}
+
+pub struct Renderer {
     instance: wgpu::Instance,
     adapter: wgpu::Adapter,
     device: wgpu::Device,
@@ -316,6 +383,8 @@ pub(crate) struct Renderer {
 
     bgs: GenVec<wgpu::BindGroup>,
     bgls: GenVec<wgpu::BindGroupLayout>,
+    buffer_layouts: GenVec<VertexBufferlayout>,
+    buffers: GenVec<wgpu::Buffer>,
     pls: GenVec<wgpu::PipelineLayout>,
     render_pipelines: GenVec<wgpu::RenderPipeline>,
     samplers: GenVec<wgpu::Sampler>,
@@ -401,6 +470,8 @@ impl Renderer {
 
             bgs: GenVec::default(),
             bgls: GenVec::default(),
+            buffer_layouts: GenVec::default(),
+            buffers: GenVec::default(),
             pls: GenVec::default(),
             render_pipelines: GenVec::default(),
             samplers: GenVec::default(),
@@ -465,7 +536,7 @@ impl Renderer {
 
         let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: desc.label,
-            layout: &layout,
+            layout,
             entries: &entries,
         });
 
@@ -493,6 +564,17 @@ impl Renderer {
             });
 
         BindGroupLayoutId(self.bgls.add(bgl))
+    }
+
+    pub fn create_buffer(&mut self, desc: &BufferDesc) -> BufferId {
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: desc.label,
+            size: desc.size as u64,
+            usage: wgpu::BufferUsages::COPY_DST | desc.usage.into(),
+            mapped_at_creation: false,
+        });
+
+        BufferId(self.buffers.add(buffer))
     }
 
     pub fn create_pipeline_layout(&mut self, desc: &PipelineLayoutDesc) -> PipelineLayoutId {
@@ -613,6 +695,43 @@ impl Renderer {
         TextureViewId(self.texture_views.add(view))
     }
 
+    pub fn create_vertex_buffer_layout(
+        &mut self,
+        desc: &VertexBufferLayoutDesc,
+    ) -> VertexBufferLayoutId {
+        let attributes = desc
+            .attributes
+            .iter()
+            .map(|a| wgpu::VertexAttribute {
+                format: a.format.into(),
+                offset: a.offset as u64,
+                shader_location: a.slot as u32,
+            })
+            .collect::<Vec<_>>();
+        let attribs_id = self.buffer_layout_attribs.add(attributes);
+
+        let layout = wgpu::VertexBufferLayout {
+            array_stride: desc.stride as u64,
+            step_mode: desc.buffer_type.into(),
+            attributes: &self.buffer_layout_attribs[attribs_id.0],
+        };
+
+        self.buffer_layouts
+            .add(VertexBufferlayout { ty: (), layout: () })
+    }
+
+    pub fn get_vertex_buffer_layout<T: 'static>(&self) -> VertexBufferLayoutId {
+        let mut layout_id = VertexBufferLayoutId::INVALID;
+
+        for (idx, layout) in self.buffer_layouts.iter() {
+            if layout.ty == TypeId::of::<T>() {
+                layout_id = VertexBufferLayoutId(idx);
+            }
+        }
+
+        layout_id
+    }
+
     pub(crate) fn submit(
         &mut self,
         buf: CommandBuffer,
@@ -627,14 +746,9 @@ impl Renderer {
                 label: Some("submit"),
             });
 
-        // todo: align indices (u16).
-        // todo: resize vbo and ibo
-        // todo: write vertices to global vbo
-        // todo: write indices to global ibo
-
         let mut draw_offset = 0;
         for pass in buf.passes.iter() {
-            let mut _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: None,
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &self.texture_views[pass.target.0],
@@ -652,7 +766,15 @@ impl Renderer {
                 occlusion_query_set: None,
             });
 
-            for _draw in &buf.draws[draw_offset..pass.draw_count] {}
+            for draw in &buf.draws[draw_offset..pass.draw_count] {
+                rpass.set_pipeline(&self.render_pipelines[draw.pipeline.0]);
+                rpass.set_vertex_buffer(0, self.buffers[draw.vbo.0].slice(..));
+                rpass.set_index_buffer(
+                    self.buffers[draw.ibo.0].slice(..),
+                    wgpu::IndexFormat::Uint16,
+                );
+                rpass.draw_indexed(0..draw.index_count as u32, 0, 0..1);
+            }
             draw_offset += pass.draw_count;
         }
 
@@ -680,6 +802,17 @@ impl Renderer {
 
         self.queue.submit([encoder.finish()]);
     }
+
+    pub fn write_buffer<T: Copy>(&self, buffer: BufferId, data: &[T]) {
+        self.queue
+            .write_buffer(&self.buffers[buffer.0], 0, cast_slice(data));
+    }
+}
+
+fn cast_slice<T: Copy>(s: &[T]) -> &[u8] {
+    let len = std::mem::size_of_val(s);
+    let data = s.as_ptr() as *const u8;
+    unsafe { std::slice::from_raw_parts(data, len) }
 }
 
 impl From<wgpu::CreateSurfaceError> for Error {
@@ -693,6 +826,10 @@ pub struct DrawTarget {
 }
 
 impl DrawTarget {
+    pub(crate) const INVALID: DrawTarget = DrawTarget {
+        texture_view: TextureViewId::INVALID,
+    };
+
     pub(crate) fn texture_view(&self) -> TextureViewId {
         self.texture_view
     }
@@ -703,6 +840,7 @@ pub(crate) struct Backbuffer {
     pipeline: RenderPipelineId,
     #[allow(dead_code)]
     sampler: SamplerId,
+    #[allow(dead_code)]
     texture: TextureId,
     texture_view: TextureViewId,
     bg: BindGroupId,
@@ -758,24 +896,11 @@ impl From<&Backbuffer> for DrawTarget {
     }
 }
 
-#[derive(Clone)]
-pub(crate) struct Texture {
-    inner: Arc<TextureInner>,
-}
-
-struct TextureInner {
-    #[allow(dead_code)]
-    texture: wgpu::Texture,
-    texture_view: wgpu::TextureView,
-}
-
 #[derive(Default, Clone)]
 pub(crate) struct CommandBuffer {
     next_pass: usize,
     draws: Vec<DrawCommand>,
     passes: Vec<RenderPass>,
-    total_indices: usize,
-    total_vertices: usize,
 }
 
 impl CommandBuffer {
@@ -783,8 +908,6 @@ impl CommandBuffer {
         self.next_pass = 0;
         self.draws.clear();
         self.passes.clear();
-        self.total_indices = 0;
-        self.total_vertices = 0;
     }
 
     pub(crate) fn record(&mut self, draw: DrawCommand) {
@@ -792,8 +915,6 @@ impl CommandBuffer {
             panic!("cannot record draw command without a render pass");
         }
 
-        self.total_indices += draw.indices.len();
-        self.total_vertices += draw.vertices.len();
         self.draws.push(draw);
         self.passes[self.next_pass - 1].draw_count += 1;
     }
@@ -817,93 +938,14 @@ pub(crate) struct RenderPass {
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct DrawCommand {
-    pub(crate) vertices: Vec<GeometryVertex>,
-    pub(crate) indices: Vec<u16>,
+    pub(crate) pipeline: RenderPipelineId,
+    pub(crate) vbo: BufferId,
+    pub(crate) ibo: BufferId,
+    pub(crate) index_count: usize,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
-pub(crate) struct GeometryVertex {
-    pub(crate) pos: [f32; 2],
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
-struct GenIdx(u32);
-
-impl GenIdx {
-    const INVALID: Self = Self::new(0xFFFFFF, 0xFF);
-
-    const fn new(index: usize, gen: u8) -> Self {
-        Self(((gen as u32) << 24) | index as u32)
-    }
-
-    fn split(&self) -> (usize, u8) {
-        let index = (self.0 & 0xFFFFFF) as usize;
-        let gen = ((self.0 >> 24) & 0xFF) as u8;
-        (index, gen)
-    }
-}
-
-struct Resource<T> {
-    gen: u8,
-    item: Option<T>,
-}
-
-struct GenVec<T> {
-    resources: Vec<Resource<T>>,
-    free: VecDeque<usize>,
-}
-
-impl<T> Default for GenVec<T> {
-    fn default() -> Self {
-        Self {
-            resources: Vec::new(),
-            free: VecDeque::new(),
-        }
-    }
-}
-
-impl<T> GenVec<T> {
-    fn add(&mut self, resource: T) -> GenIdx {
-        let index = if let Some(index) = self.free.pop_front() {
-            index
-        } else {
-            self.resources.push(Resource { gen: 0, item: None });
-            self.resources.len() - 1
-        };
-
-        self.resources[index].item = Some(resource);
-
-        GenIdx::new(index, self.resources[index].gen)
-    }
-
-    fn remove(&mut self, idx: GenIdx) -> Option<T> {
-        let (index, gen) = idx.split();
-        assert_eq!(
-            gen, self.resources[index].gen,
-            "resource generation does not match"
-        );
-
-        // Recycle generation if we get to u8 max.
-        if self.resources[index].gen == 255 {
-            self.resources[index].gen = 0;
-        } else {
-            self.resources[index].gen += 1;
-        }
-
-        self.resources[index].item.take()
-    }
-}
-
-impl<T> Index<GenIdx> for GenVec<T> {
-    type Output = T;
-
-    fn index(&self, idx: GenIdx) -> &Self::Output {
-        let (index, gen) = idx.split();
-        assert_eq!(
-            gen, self.resources[index].gen,
-            "resource generation does not match"
-        );
-
-        self.resources[index].item.as_ref().unwrap()
-    }
+#[repr(C)]
+pub struct GeometryVertex {
+    pub pos: [f32; 2],
 }

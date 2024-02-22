@@ -7,15 +7,16 @@ struct Sandbox {
 }
 
 impl Game for Sandbox {
-    fn on_start(_age: &mut Engine) -> Result<Self, Error> {
-        let sprite = Sprite::new(100, 200);
+    fn on_start(age: &mut Engine) -> Result<Self, Error> {
+        let sprite =
+            Sprite::from_image(&mut age.renderer, 100, 200, age.graphics.default_material());
 
         Ok(Self { sprite })
     }
 
     fn on_update(&mut self, age: &mut Engine) {
-        age.clear(Color::RED);
-        age.draw_sprite(&self.sprite);
+        age.graphics.clear(Color::RED);
+        age.graphics.draw_sprite(&self.sprite);
     }
 }
 

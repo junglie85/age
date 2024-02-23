@@ -7,10 +7,16 @@ struct VsOut {
     @location(0) color: vec4<f32>,
 }
 
+struct PushConstant {
+    color: vec4<f32>,
+}
+
+var<push_constant> r_pc: PushConstant;
+
 @vertex
 fn vs_main(vertex: GeometryVertex) -> VsOut {
     let pos = vec4(vertex.pos, 0.0, 1.0);
-    let color = vec4(0.0, 0.0, 1.0, 0.0);
+    let color = r_pc.color;
 
     return VsOut(
         pos,

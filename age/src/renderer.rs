@@ -390,12 +390,14 @@ pub struct VertexAttribute {
 #[derive(Debug, Clone, Copy)]
 pub enum VertexFormat {
     Float32x2,
+    Float32x4,
 }
 
 impl From<VertexFormat> for wgpu::VertexFormat {
     fn from(value: VertexFormat) -> Self {
         match value {
             VertexFormat::Float32x2 => wgpu::VertexFormat::Float32x2,
+            VertexFormat::Float32x4 => wgpu::VertexFormat::Float32x4,
         }
     }
 }
@@ -471,7 +473,7 @@ impl Renderer {
                 }
             };
 
-        let required_features = wgpu::Features::empty();
+        let required_features = wgpu::Features::PUSH_CONSTANTS;
         assert!(adapter.features().contains(required_features));
 
         let required_limits = wgpu::Limits {
@@ -648,7 +650,10 @@ impl Renderer {
             .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: desc.label,
                 bind_group_layouts: &bgls,
-                push_constant_ranges: &[],
+                push_constant_ranges: &[wgpu::PushConstantRange {
+                    stages: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    range: 0..std::mem::size_of::<PushConstantBuffer>() as u32,
+                }],
             });
 
         PipelineLayoutId(self.pls.add(pl))
@@ -834,6 +839,13 @@ impl Renderer {
                     self.buffers[draw.ibo.0].slice(..),
                     wgpu::IndexFormat::Uint16,
                 );
+                rpass.set_push_constants(
+                    wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    0,
+                    cast_slice(&[PushConstantBuffer {
+                        color: draw.color.to_array_f32(), // todo: Can we create all the push constant buffers ahead of time? Benefit?
+                    }]),
+                );
                 rpass.draw_indexed(0..draw.index_count as u32, 0, 0..1);
             }
             draw_offset += pass.draw_count;
@@ -1003,6 +1015,7 @@ pub(crate) struct DrawCommand {
     pub(crate) vbo: BufferId,
     pub(crate) ibo: BufferId,
     pub(crate) index_count: usize,
+    pub(crate) color: Color,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -1025,4 +1038,10 @@ impl GeometryVertex {
             attributes: &Self::ATTRIBS,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+struct PushConstantBuffer {
+    color: [f32; 4],
 }

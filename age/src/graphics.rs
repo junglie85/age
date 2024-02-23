@@ -132,6 +132,7 @@ impl Graphics {
             vbo: sprite.mesh.buffers.vbo,
             ibo: sprite.mesh.buffers.ibo,
             index_count: 6,
+            color: sprite.color,
         });
     }
 
@@ -166,7 +167,7 @@ pub struct Sprite {
 }
 
 impl Sprite {
-    const INDICES: [u16; 8] = [0, 1, 2, 0, 2, 3, 0, 0]; // Index alignment.
+    const INDICES: [u16; 8] = [0, 1, 2, 0, 2, 3, 0, 0]; // todo: Index alignment.
     const VERTICES: [GeometryVertex; 4] = [
         GeometryVertex { pos: [0.0, 0.0] },
         GeometryVertex { pos: [0.0, 0.5] },

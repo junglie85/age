@@ -85,7 +85,7 @@ pub(crate) struct GenVecIter<'a, T> {
 }
 
 impl<'a, T> Iterator for GenVecIter<'a, T> {
-    type Item = (GenIdx, &'a T);
+    type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
         let resource = self.resources.get(self.next);
@@ -94,7 +94,7 @@ impl<'a, T> Iterator for GenVecIter<'a, T> {
             Some(resource) => {
                 let gen_idx = GenIdx::new(self.next, resource.gen);
                 match &resource.item {
-                    Some(item) => Some((gen_idx, item)),
+                    Some(item) => Some(item),
                     None => self.next(),
                 }
             }

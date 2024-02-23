@@ -3,7 +3,7 @@ use crate::{
     renderer::{
         BufferDesc, BufferId, BufferUsages, CommandBuffer, DrawCommand, DrawTarget, GeometryVertex,
         PipelineLayoutDesc, PipelineLayoutId, RenderPipelineDesc, RenderPipelineId, Renderer,
-        ShaderDesc, ShaderId,
+        ShaderDesc, ShaderId, TextureFormat,
     },
     Color,
 };
@@ -55,6 +55,8 @@ impl Graphics {
             shader: default_shader,
             vs_main: "vs_main",
             fs_main: "fs_main",
+            buffers: &[renderer.geometry_vertex_buffer_layout()],
+            color_target_format: TextureFormat::Rgba8Unorm,
         });
 
         let mut graphics = Self {
@@ -180,14 +182,14 @@ impl Sprite {
     ) -> Self {
         let vbo = renderer.create_buffer(&BufferDesc {
             label: Some("sprite"),
-            size: std::mem::size_of::<[u16; 8]>(),
+            size: std::mem::size_of::<[GeometryVertex; 4]>(),
             usage: BufferUsages::VERTEX,
         });
         renderer.write_buffer(vbo, &Self::VERTICES);
 
         let ibo = renderer.create_buffer(&BufferDesc {
             label: Some("sprite"),
-            size: std::mem::size_of::<[GeometryVertex; 4]>(),
+            size: std::mem::size_of::<[u16; 8]>(),
             usage: BufferUsages::INDEX,
         });
         renderer.write_buffer(ibo, &Self::INDICES);

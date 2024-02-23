@@ -47,4 +47,8 @@ impl Engine {
             graphics,
         }
     }
+
+    pub fn exit(&mut self) {
+        self.exit = true;
+    }
 }

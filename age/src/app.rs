@@ -1,7 +1,7 @@
 use crate::{
     error::Error,
     graphics::Graphics,
-    renderer::{Backbuffer, Renderer, Surface},
+    renderer::{Renderer, Surface},
     sys::{Event, Sys},
     Engine, Game,
 };

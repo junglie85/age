@@ -1,4 +1,4 @@
-use std::{any::TypeId, borrow::Cow, collections::HashMap};
+use std::borrow::Cow;
 
 use crate::{
     gen_vec::{GenIdx, GenVec},
@@ -205,6 +205,8 @@ pub struct RenderPipelineDesc<'desc> {
     pub shader: ShaderId,
     pub vs_main: &'desc str,
     pub fs_main: &'desc str,
+    pub buffers: &'desc [VertexBufferLayoutId],
+    pub color_target_format: TextureFormat,
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
@@ -360,11 +362,59 @@ impl std::fmt::Debug for VertexBufferLayoutId {
     }
 }
 
-pub struct VertexBufferLayoutDesc {}
+pub struct VertexBufferLayoutDesc<'desc> {
+    stride: usize,
+    buffer_type: VertexBufferType,
+    attributes: &'desc [VertexAttribute],
+}
 
-struct VertexBufferlayout {
-    ty: TypeId,
-    layout: wgpu::VertexBufferLayout<'static>,
+#[derive(Debug, Clone, Copy)]
+pub enum VertexBufferType {
+    Geometry,
+}
+
+impl From<VertexBufferType> for wgpu::VertexStepMode {
+    fn from(value: VertexBufferType) -> Self {
+        match value {
+            VertexBufferType::Geometry => wgpu::VertexStepMode::Vertex,
+        }
+    }
+}
+
+pub struct VertexAttribute {
+    format: VertexFormat,
+    offset: usize,
+    location: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum VertexFormat {
+    Float32x2,
+}
+
+impl From<VertexFormat> for wgpu::VertexFormat {
+    fn from(value: VertexFormat) -> Self {
+        match value {
+            VertexFormat::Float32x2 => wgpu::VertexFormat::Float32x2,
+        }
+    }
+}
+
+struct VertexBufferLayout {
+    stride: u64,
+    step_mode: wgpu::VertexStepMode,
+    attributes: VertexBufferAttributeId,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct VertexBufferAttributeId(GenIdx);
+
+impl std::fmt::Debug for VertexBufferAttributeId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("VertexBufferAttributeId")
+            .field(&self.0.idx())
+            .finish()
+    }
 }
 
 pub struct Renderer {
@@ -380,10 +430,12 @@ pub struct Renderer {
     #[allow(dead_code)]
     backbuffer_shader: ShaderId,
     backbuffer_pipeline: RenderPipelineId,
+    geometry_vertex_buffer_layout: VertexBufferLayoutId,
 
     bgs: GenVec<wgpu::BindGroup>,
     bgls: GenVec<wgpu::BindGroupLayout>,
-    buffer_layouts: GenVec<VertexBufferlayout>,
+    buffer_layouts: GenVec<VertexBufferLayout>,
+    buffer_layout_attribs: GenVec<Vec<wgpu::VertexAttribute>>,
     buffers: GenVec<wgpu::Buffer>,
     pls: GenVec<wgpu::PipelineLayout>,
     render_pipelines: GenVec<wgpu::RenderPipeline>,
@@ -467,10 +519,12 @@ impl Renderer {
             backbuffer_pl: PipelineLayoutId::INVALID,
             backbuffer_shader: ShaderId::INVALID,
             backbuffer_pipeline: RenderPipelineId::INVALID,
+            geometry_vertex_buffer_layout: VertexBufferLayoutId::INVALID,
 
             bgs: GenVec::default(),
             bgls: GenVec::default(),
             buffer_layouts: GenVec::default(),
+            buffer_layout_attribs: GenVec::default(),
             buffers: GenVec::default(),
             pls: GenVec::default(),
             render_pipelines: GenVec::default(),
@@ -506,7 +560,12 @@ impl Renderer {
             shader: renderer.backbuffer_shader,
             vs_main: "vs_main",
             fs_main: "fs_main",
+            buffers: &[],
+            color_target_format: TextureFormat::Bgra8Unorm, // todo: How do we get this from the surface, which is created later when resume is called?
         });
+
+        renderer.geometry_vertex_buffer_layout =
+            renderer.create_vertex_buffer_layout(&GeometryVertex::layout());
 
         Ok(renderer)
     }
@@ -596,6 +655,19 @@ impl Renderer {
     }
 
     pub fn create_render_pipeline(&mut self, desc: &RenderPipelineDesc) -> RenderPipelineId {
+        let buffers = desc
+            .buffers
+            .iter()
+            .map(|b| {
+                let i = &self.buffer_layouts[b.0];
+                wgpu::VertexBufferLayout {
+                    array_stride: i.stride,
+                    step_mode: i.step_mode,
+                    attributes: &self.buffer_layout_attribs[i.attributes.0],
+                }
+            })
+            .collect::<Vec<_>>();
+
         let pipeline = self
             .device
             .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -604,7 +676,7 @@ impl Renderer {
                 vertex: wgpu::VertexState {
                     module: &self.shaders[desc.shader.0],
                     entry_point: desc.vs_main,
-                    buffers: &[],
+                    buffers: &buffers,
                 },
                 primitive: wgpu::PrimitiveState {
                     topology: wgpu::PrimitiveTopology::TriangleList,
@@ -623,7 +695,7 @@ impl Renderer {
                     module: &self.shaders[desc.shader.0],
                     entry_point: desc.fs_main,
                     targets: &[Some(wgpu::ColorTargetState {
-                        format: wgpu::TextureFormat::Bgra8Unorm, // todo: get this from the surface
+                        format: desc.color_target_format.into(),
                         blend: None,
                         write_mask: wgpu::ColorWrites::ALL,
                     })],
@@ -705,31 +777,20 @@ impl Renderer {
             .map(|a| wgpu::VertexAttribute {
                 format: a.format.into(),
                 offset: a.offset as u64,
-                shader_location: a.slot as u32,
+                shader_location: a.location as u32,
             })
             .collect::<Vec<_>>();
-        let attribs_id = self.buffer_layout_attribs.add(attributes);
+        let attribs_id = VertexBufferAttributeId(self.buffer_layout_attribs.add(attributes));
 
-        let layout = wgpu::VertexBufferLayout {
-            array_stride: desc.stride as u64,
+        VertexBufferLayoutId(self.buffer_layouts.add(VertexBufferLayout {
+            stride: desc.stride as u64,
             step_mode: desc.buffer_type.into(),
-            attributes: &self.buffer_layout_attribs[attribs_id.0],
-        };
-
-        self.buffer_layouts
-            .add(VertexBufferlayout { ty: (), layout: () })
+            attributes: attribs_id,
+        }))
     }
 
-    pub fn get_vertex_buffer_layout<T: 'static>(&self) -> VertexBufferLayoutId {
-        let mut layout_id = VertexBufferLayoutId::INVALID;
-
-        for (idx, layout) in self.buffer_layouts.iter() {
-            if layout.ty == TypeId::of::<T>() {
-                layout_id = VertexBufferLayoutId(idx);
-            }
-        }
-
-        layout_id
+    pub fn geometry_vertex_buffer_layout(&self) -> VertexBufferLayoutId {
+        self.geometry_vertex_buffer_layout
     }
 
     pub(crate) fn submit(
@@ -948,4 +1009,20 @@ pub(crate) struct DrawCommand {
 #[repr(C)]
 pub struct GeometryVertex {
     pub pos: [f32; 2],
+}
+
+impl GeometryVertex {
+    const ATTRIBS: [VertexAttribute; 1] = [VertexAttribute {
+        format: VertexFormat::Float32x2,
+        offset: 0,
+        location: 0,
+    }];
+
+    pub fn layout() -> VertexBufferLayoutDesc<'static> {
+        VertexBufferLayoutDesc {
+            stride: std::mem::size_of::<Self>(),
+            buffer_type: VertexBufferType::Geometry,
+            attributes: &Self::ATTRIBS,
+        }
+    }
 }

@@ -1,7 +1,8 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, num::NonZeroU64};
 
 use crate::{
     gen_vec::{GenIdx, GenVec},
+    math::Mat4,
     sys::Window,
     Color, Error,
 };
@@ -79,13 +80,14 @@ impl std::fmt::Debug for BindGroupId {
 }
 
 pub struct BindGroupDesc<'desc> {
-    label: Option<&'desc str>,
-    layout: BindGroupLayoutId,
-    resources: &'desc [BindingResource],
+    pub label: Option<&'desc str>,
+    pub layout: BindGroupLayoutId,
+    pub resources: &'desc [BindingResource],
 }
 
 pub enum BindingResource {
     Sampler(SamplerId),
+    StorageBuffer(BufferId),
     TextureView(TextureViewId),
 }
 
@@ -111,6 +113,7 @@ pub struct BindGroupLayoutDesc<'desc> {
 
 pub enum BindingType {
     Sampler,
+    StorageBuffer { read_only: bool, min_size: usize },
     Texture { multisampled: bool },
 }
 
@@ -118,6 +121,14 @@ impl From<&BindingType> for wgpu::BindingType {
     fn from(ty: &BindingType) -> Self {
         match *ty {
             BindingType::Sampler => wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+            BindingType::StorageBuffer {
+                read_only,
+                min_size,
+            } => wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only },
+                has_dynamic_offset: false,
+                min_binding_size: wgpu::BufferSize::new(min_size as u64),
+            },
             BindingType::Texture { multisampled } => wgpu::BindingType::Texture {
                 sample_type: wgpu::TextureSampleType::Float { filterable: true },
                 view_dimension: wgpu::TextureViewDimension::D2,
@@ -151,6 +162,7 @@ bitflags::bitflags! {
     pub struct BufferUsages: u32 {
         const INDEX = 1 << 0;
         const VERTEX = 1 << 1;
+        const STORAGE = 1 << 2;
     }
 }
 
@@ -159,6 +171,7 @@ impl From<BufferUsages> for wgpu::BufferUsages {
         match value {
             BufferUsages::INDEX => wgpu::BufferUsages::INDEX,
             BufferUsages::VERTEX => wgpu::BufferUsages::VERTEX,
+            BufferUsages::STORAGE => wgpu::BufferUsages::STORAGE,
             _ => unreachable!(),
         }
     }
@@ -456,7 +469,7 @@ impl Renderer {
         };
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::DX12,
+            backends: wgpu::Backends::VULKAN, //DX12,
             flags,
             ..Default::default()
         });
@@ -572,8 +585,14 @@ impl Renderer {
         Ok(renderer)
     }
 
-    pub(crate) fn create_backbuffer(&mut self) -> Backbuffer {
-        Backbuffer::new(self, self.backbuffer_pipeline, self.backbuffer_bgl)
+    pub(crate) fn create_backbuffer(&mut self, width: u32, height: u32) -> Backbuffer {
+        Backbuffer::new(
+            width,
+            height,
+            self,
+            self.backbuffer_pipeline,
+            self.backbuffer_bgl,
+        )
     }
 
     pub fn create_bind_group(&mut self, desc: &BindGroupDesc) -> BindGroupId {
@@ -587,6 +606,9 @@ impl Renderer {
                 resource: match resource {
                     BindingResource::Sampler(id) => {
                         wgpu::BindingResource::Sampler(&self.samplers[id.0])
+                    }
+                    BindingResource::StorageBuffer(id) => {
+                        wgpu::BindingResource::Buffer(self.buffers[id.0].as_entire_buffer_binding())
                     }
                     BindingResource::TextureView(id) => {
                         wgpu::BindingResource::TextureView(&self.texture_views[id.0])
@@ -800,6 +822,7 @@ impl Renderer {
 
     pub(crate) fn submit(
         &mut self,
+        data: RenderData,
         buf: CommandBuffer,
         backbuffer: &Backbuffer,
         surface: &mut Surface,
@@ -811,6 +834,17 @@ impl Renderer {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("submit"),
             });
+
+        // todo: can we pass staging belt to graphics rather than clone twice?
+        self.belt
+            .write_buffer(
+                &mut encoder,
+                &self.buffers[data.dest.0],
+                0,
+                NonZeroU64::new(data.size as u64).unwrap(),
+                &self.device,
+            )
+            .clone_from_slice(&data.data);
 
         let mut draw_offset = 0;
         for pass in buf.passes.iter() {
@@ -835,15 +869,19 @@ impl Renderer {
             for draw in &buf.draws[draw_offset..pass.draw_count] {
                 rpass.set_pipeline(&self.render_pipelines[draw.pipeline.0]);
                 rpass.set_vertex_buffer(0, self.buffers[draw.vbo.0].slice(..));
+                rpass.set_bind_group(0, &self.bgs[draw.globals_bg.0], &[]);
                 rpass.set_index_buffer(
                     self.buffers[draw.ibo.0].slice(..),
                     wgpu::IndexFormat::Uint16,
                 );
                 rpass.set_push_constants(
+                    // todo: can we move push constant to Graphics so that not all pipelines are aware of it?
                     wgpu::ShaderStages::VERTEX_FRAGMENT,
                     0,
                     cast_slice(&[PushConstantBuffer {
                         color: draw.color.to_array_f32(), // todo: Can we create all the push constant buffers ahead of time? Benefit?
+                        model: draw.model.to_cols_array(),
+                        globals_idx: draw.globals_idx as u32,
                     }]),
                 );
                 rpass.draw_indexed(0..draw.index_count as u32, 0, 0..1);
@@ -873,7 +911,9 @@ impl Renderer {
             rpass.draw(0..3, 0..1);
         }
 
+        self.belt.finish();
         self.queue.submit([encoder.finish()]);
+        self.belt.recall();
     }
 
     pub fn write_buffer<T: Copy>(&self, buffer: BufferId, data: &[T]) {
@@ -882,7 +922,7 @@ impl Renderer {
     }
 }
 
-fn cast_slice<T: Copy>(s: &[T]) -> &[u8] {
+pub(crate) fn cast_slice<T: Copy>(s: &[T]) -> &[u8] {
     let len = std::mem::size_of_val(s);
     let data = s.as_ptr() as *const u8;
     unsafe { std::slice::from_raw_parts(data, len) }
@@ -920,7 +960,13 @@ pub(crate) struct Backbuffer {
 }
 
 impl Backbuffer {
-    fn new(renderer: &mut Renderer, pipeline: RenderPipelineId, bgl: BindGroupLayoutId) -> Self {
+    fn new(
+        width: u32,
+        height: u32,
+        renderer: &mut Renderer,
+        pipeline: RenderPipelineId,
+        bgl: BindGroupLayoutId,
+    ) -> Self {
         let sampler = renderer.create_sampler(&SamplerDesc {
             label: Some("backbuffer"),
             address_mode_u: AddressMode::ClampToEdge,
@@ -931,8 +977,8 @@ impl Backbuffer {
 
         let texture = renderer.create_texture(&TextureDesc {
             label: Some("backbuffer"),
-            width: 1920, // todo: pass these in
-            height: 1080,
+            width,
+            height,
             format: TextureFormat::Rgba8Unorm, // todo: can we use srgb?
         });
 
@@ -1010,12 +1056,22 @@ pub(crate) struct RenderPass {
 }
 
 #[derive(Debug, Default, Clone)]
+pub(crate) struct RenderData {
+    pub(crate) dest: BufferId,
+    pub(crate) size: usize,
+    pub(crate) data: Vec<u8>,
+}
+
+#[derive(Debug, Default, Clone)]
 pub(crate) struct DrawCommand {
     pub(crate) pipeline: RenderPipelineId,
     pub(crate) vbo: BufferId,
     pub(crate) ibo: BufferId,
     pub(crate) index_count: usize,
     pub(crate) color: Color,
+    pub(crate) model: Mat4,
+    pub(crate) globals_bg: BindGroupId,
+    pub(crate) globals_idx: usize, // Index of data in global sbo.
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -1044,4 +1100,6 @@ impl GeometryVertex {
 #[repr(C)]
 struct PushConstantBuffer {
     color: [f32; 4],
+    model: [f32; 16],
+    globals_idx: u32,
 }

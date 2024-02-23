@@ -10,6 +10,7 @@ mod color;
 mod error;
 mod gen_vec;
 mod graphics;
+pub mod math;
 mod renderer;
 mod sys;
 

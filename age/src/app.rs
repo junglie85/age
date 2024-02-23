@@ -1,6 +1,6 @@
 use crate::{
     error::Error,
-    graphics::Graphics,
+    graphics::{Graphics, View},
     renderer::{Renderer, Surface},
     sys::{Event, Sys},
     Engine, Game,
@@ -13,8 +13,8 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
     let window = sys.create_window(width, height)?;
     let mut renderer = Renderer::new()?;
     let mut surface = Surface::default();
-    let backbuffer = renderer.create_backbuffer(/* width, height */);
-    let graphics = Graphics::new(&mut renderer);
+    let backbuffer = renderer.create_backbuffer(width, height);
+    let graphics = Graphics::new(&mut renderer, View::new(width, height));
 
     let mut age = Engine::new(renderer, graphics);
     let mut game = G::on_start(&mut age)?;
@@ -30,13 +30,18 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
 
             Event::Update => {
                 age.graphics.set_draw_target(&backbuffer);
+                age.graphics.set_view(age.graphics.get_default_view());
                 game.on_update(&mut age);
-                age.renderer
-                    .submit(age.graphics.draws().clone(), &backbuffer, &mut surface);
+                age.renderer.submit(
+                    age.graphics.data(),
+                    age.graphics.draws().clone(),
+                    &backbuffer,
+                    &mut surface,
+                );
                 window.pre_present();
                 surface.present();
                 window.post_present();
-                age.graphics.draws_mut().clear();
+                age.graphics.reset();
             }
         };
 

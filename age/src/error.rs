@@ -39,3 +39,15 @@ impl From<&str> for Error {
         Self::new(value)
     }
 }
+
+impl From<std::io::Error> for Error {
+    fn from(value: std::io::Error) -> Self {
+        Self::new("an i/o operation failed").with_source(value)
+    }
+}
+
+impl<T> From<std::sync::PoisonError<T>> for Error {
+    fn from(_value: std::sync::PoisonError<T>) -> Self {
+        Self::new("failed to acquire a lock")
+    }
+}

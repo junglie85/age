@@ -1,18 +1,14 @@
 use std::process::ExitCode;
 
-pub use color::*;
 pub use error::Error;
-pub use graphics::{Graphics, Sprite};
-use renderer::Renderer;
+pub use graphics::*;
 
 mod app;
-mod color;
 mod error;
-mod gen_vec;
 mod graphics;
 pub mod math;
-mod renderer;
 mod sys;
+pub mod util;
 
 pub fn run<G: Game>() -> ExitCode {
     match app::run::<G>() {
@@ -36,20 +32,19 @@ pub trait Game<T = Self> {
 
 pub struct Engine {
     exit: bool,
-    pub renderer: Renderer,
-    pub graphics: Graphics,
 }
 
 impl Engine {
-    fn new(renderer: Renderer, graphics: Graphics) -> Self {
-        Self {
-            exit: false,
-            renderer,
-            graphics,
-        }
+    fn new() -> Self {
+        Self { exit: false }
     }
 
     pub fn exit(&mut self) {
         self.exit = true;
     }
+}
+
+// Graphics
+impl Engine {
+    pub fn clear(&mut self, color: Color) {}
 }

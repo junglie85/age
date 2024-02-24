@@ -1,9 +1,7 @@
 use crate::{
     error::Error,
-    graphics::{Graphics, View},
-    renderer::{Renderer, Surface},
     sys::{Event, Sys},
-    Engine, Game,
+    Engine, Game, RendererId, Rhi,
 };
 
 pub(crate) fn run<G: Game>() -> Result<(), Error> {
@@ -11,12 +9,15 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
     let height = 1080;
     let sys = Sys::init()?;
     let window = sys.create_window(width, height)?;
-    let mut renderer = Renderer::new()?;
-    let mut surface = Surface::default();
-    let backbuffer = renderer.create_backbuffer(width, height);
-    let graphics = Graphics::new(&mut renderer, View::new(width, height));
 
-    let mut age = Engine::new(renderer, graphics);
+    Rhi::get().init()?;
+    // let render_thread = ;
+    // let renderer = Renderer::new()?;
+    // let render_proxy = renderer.create_render_proxy();
+    let render_proxy = Rhi::get().get_render_proxy();
+    let mut backbuffer = RendererId::INVALID;
+
+    let mut age = Engine::new();
     let mut game = G::on_start(&mut age)?;
 
     sys.run(|event, platform| {
@@ -24,24 +25,15 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
             Event::ExitRequested => game.on_exit_requested(&mut age),
 
             Event::PlatformReady => {
-                surface.init(&age.renderer, &window)?;
+                backbuffer = render_proxy.create_backbuffer(window.clone());
                 window.set_visible(true);
             }
 
             Event::Update => {
-                age.graphics.set_draw_target(&backbuffer);
-                age.graphics.set_view(age.graphics.get_default_view());
                 game.on_update(&mut age);
-                age.renderer.submit(
-                    age.graphics.data(),
-                    age.graphics.draws().clone(),
-                    &backbuffer,
-                    &mut surface,
-                );
                 window.pre_present();
-                surface.present();
+
                 window.post_present();
-                age.graphics.reset();
             }
         };
 
@@ -51,6 +43,8 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
 
         Ok(())
     })?;
+
+    Rhi::get().deinit()?;
 
     Ok(())
 }

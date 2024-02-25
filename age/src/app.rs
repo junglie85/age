@@ -1,7 +1,8 @@
 use crate::{
     error::Error,
+    render_thread_main,
     sys::{Event, Sys},
-    Engine, Game, RendererId, Rhi,
+    BackbufferInfo, Engine, Game, Gpu, Renderer,
 };
 
 pub(crate) fn run<G: Game>() -> Result<(), Error> {
@@ -10,14 +11,20 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
     let sys = Sys::init()?;
     let window = sys.create_window(width, height)?;
 
-    Rhi::get().init()?;
-    // let render_thread = ;
-    // let renderer = Renderer::new()?;
-    // let render_proxy = renderer.create_render_proxy();
-    let render_proxy = Rhi::get().get_render_proxy();
-    let mut backbuffer = RendererId::INVALID;
+    let gpu = Gpu::new()?;
+    let renderer = Renderer::new(&gpu);
+    let render_proxy = renderer.create_render_proxy();
+    let render_thread = std::thread::Builder::new()
+        .name("render thread".to_string())
+        .spawn(|| {
+            if let Err(err) = render_thread_main(renderer) {
+                panic!("render thread error: {err}");
+            }
+        })?;
 
-    let mut age = Engine::new();
+    let backbuffer = gpu.create_backbuffer(&BackbufferInfo { window: &window });
+
+    let mut age = Engine::new(window, backbuffer, gpu);
     let mut game = G::on_start(&mut age)?;
 
     sys.run(|event, platform| {
@@ -25,15 +32,12 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
             Event::ExitRequested => game.on_exit_requested(&mut age),
 
             Event::PlatformReady => {
-                backbuffer = render_proxy.create_backbuffer(window.clone());
-                window.set_visible(true);
+                age.on_resume();
             }
 
             Event::Update => {
                 game.on_update(&mut age);
-                window.pre_present();
-
-                window.post_present();
+                age.update(&render_proxy);
             }
         };
 
@@ -44,7 +48,10 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
         Ok(())
     })?;
 
-    Rhi::get().deinit()?;
+    render_proxy.stop_render_thread();
+    render_thread
+        .join()
+        .map_err(|err| Error::new(format!("{:?}", err)))?;
 
     Ok(())
 }

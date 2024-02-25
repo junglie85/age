@@ -1,7 +1,5 @@
 pub use color::*;
-pub use renderer::*;
-pub use rhi::*;
+pub use gpu::*;
 
 mod color;
-mod renderer;
-mod rhi;
+mod gpu;

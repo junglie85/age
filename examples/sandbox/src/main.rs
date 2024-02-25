@@ -10,7 +10,9 @@ impl Game for Sandbox {
     }
 
     fn on_update(&mut self, age: &mut Engine) {
-        age.clear(Color::RED);
+        age.set_render_target(age.get_backbuffer());
+        age.clear(0, Color::RED);
+        age.draw();
     }
 }
 

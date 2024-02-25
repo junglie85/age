@@ -72,18 +72,21 @@ impl Platform {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct WindowId(winit::window::WindowId);
+
 #[derive(Clone)]
-pub(crate) struct Window {
+pub struct Window {
     w: Arc<winit::window::Window>,
 }
 
 impl Window {
-    pub(crate) fn height(&self) -> u32 {
-        self.w.inner_size().height
+    pub(crate) fn get_id(&self) -> WindowId {
+        WindowId(self.w.id())
     }
 
-    pub(crate) fn width(&self) -> u32 {
-        self.w.inner_size().width
+    pub(crate) fn get_size(&self) -> (u32, u32) {
+        self.w.inner_size().into()
     }
 
     pub(crate) fn post_present(&self) {

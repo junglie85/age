@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use winit::{dpi::LogicalSize, event_loop::ControlFlow};
 
-use crate::error::Error;
+use crate::{engine::EngineComponent, error::Error, Engine};
 
 pub(crate) struct Sys {
     el: Option<winit::event_loop::EventLoop<()>>,
@@ -99,6 +99,20 @@ impl Window {
 
     pub(crate) fn set_visible(&self, visible: bool) {
         self.w.set_visible(visible);
+    }
+}
+
+impl EngineComponent for Window {
+    fn on_resume(&mut self, engine: &mut Engine) {
+        println!("window on_resume")
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
     }
 }
 

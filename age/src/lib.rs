@@ -94,6 +94,7 @@ impl Engine {
             self.needs_render_pass = false;
 
             self.render_ctx.set_render_pass(RenderPass {
+                label: None,
                 target: self.render_target.clone(),
                 clear_colors: self.clear_colors,
                 commands: 0,

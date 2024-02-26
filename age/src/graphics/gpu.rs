@@ -125,9 +125,21 @@ impl Gpu {
     }
 }
 
-impl From<wgpu::CreateSurfaceError> for Error {
-    fn from(value: wgpu::CreateSurfaceError) -> Self {
-        Error::new("failed to create a window surface").with_source(value)
+impl Gpu {
+    fn create_command_encoder(
+        &self,
+        desc: &wgpu::CommandEncoderDescriptor,
+    ) -> wgpu::CommandEncoder {
+        self.inner.device.create_command_encoder(desc)
+    }
+
+    fn create_surface<'window>(
+        &self,
+        target: impl Into<wgpu::SurfaceTarget<'window>>,
+    ) -> Result<wgpu::Surface, Error> {
+        let s = self.inner.instance.create_surface(target)?;
+
+        Ok(s)
     }
 }
 
@@ -165,7 +177,9 @@ pub(crate) struct RenderProxy {
 
 impl RenderProxy {
     pub(crate) fn dispatch(&self, ctx: RenderContext) {
-        todo!()
+        if let Err(_) = self.tx.send(RenderMessage::Dispatch(ctx)) {
+            panic!("render thread has been stopped");
+        }
     }
 
     pub(crate) fn stop_render_thread(&self) {
@@ -174,6 +188,7 @@ impl RenderProxy {
 }
 
 pub(crate) struct RenderPass {
+    pub(crate) label: Option<String>,
     pub(crate) target: RenderTarget,
     pub(crate) clear_colors: [Option<Color>; RenderTarget::MAX_COLOR_SLOTS],
     // viewport
@@ -216,7 +231,9 @@ impl RenderContext {
     }
 }
 
-enum RenderMessage {}
+enum RenderMessage {
+    Dispatch(RenderContext),
+}
 
 pub struct BackbufferInfo<'info> {
     pub window: &'info Window,
@@ -265,26 +282,138 @@ impl From<Backbuffer> for RenderTarget {
 
 #[derive(Default, Clone)]
 struct Surface<'window> {
-    inner: Arc<SurfaceInner<'window>>,
+    inner: Arc<Mutex<SurfaceInner<'window>>>,
 }
 
 #[derive(Default)]
 struct SurfaceInner<'window> {
     s: Option<wgpu::Surface<'window>>,
     config: Option<wgpu::SurfaceConfiguration>,
+    frame: Option<wgpu::SurfaceTexture>,
 }
 
 impl<'window> Surface<'window> {
-    fn present(&mut self) {}
+    fn acquire(&self) -> Result<wgpu::TextureView, Error> {
+        let mut inner = self.inner.lock().expect("failed to acquire lock");
+        assert!(inner.s.is_some(), "surface is not resumed");
 
-    fn resume(&mut self, gpu: &Gpu, window: Window) {}
+        inner.frame = Some(inner.s.as_ref().unwrap().get_current_texture()?); // todo: better handling of non-acquired surface texture.
+
+        let view =
+            inner
+                .frame
+                .as_ref()
+                .unwrap()
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor {
+                    label: Some("backbuffer surface"),
+                    ..Default::default()
+                });
+
+        Ok(view)
+    }
+
+    fn present(&mut self) {
+        let mut inner = self.inner.lock().expect("failed to acquire lock");
+        if let Some(frame) = inner.frame.take() {
+            frame.present();
+        }
+    }
+
+    fn resume(&mut self, gpu: &Gpu, window: Window) -> Result<(), Error> {
+        let s = gpu.create_surface(window)?;
+
+        todo!();
+
+        Ok(())
+    }
+}
+
+impl From<wgpu::CreateSurfaceError> for Error {
+    fn from(value: wgpu::CreateSurfaceError) -> Self {
+        Error::new("failed to create a window surface").with_source(value)
+    }
+}
+
+impl From<wgpu::SurfaceError> for Error {
+    fn from(value: wgpu::SurfaceError) -> Self {
+        Error::new("failed to acquire surface texture").with_source(value)
+    }
 }
 
 pub(crate) fn render_thread_main(renderer: Renderer) -> Result<(), Error> {
     while !renderer.thread_stop.load(Ordering::Relaxed) {
         for message in renderer.render_proxy_rx.try_iter() {
-            match message {}
+            match message {
+                RenderMessage::Dispatch(ctx) => render_thread_dispatch(&renderer, ctx)?,
+            }
         }
+    }
+
+    Ok(())
+}
+
+fn render_thread_dispatch(renderer: &Renderer, ctx: RenderContext) -> Result<(), Error> {
+    let gpu = renderer.gpu.clone();
+
+    // We need to acquire the texture view from any surfaces before the main render passes so that we are not
+    // trying to have exclusive and shared borrows of the vec at the same time. We cannot return a reference to
+    // the view from Surface::acquire() because it would need to be behind a Mutex.
+    let mut surface_views_lut = Vec::new();
+    for pass in ctx.passes.iter() {
+        for target in pass.target.color_targets.iter() {
+            if let Some(target) = target.as_ref() {
+                if let ColorTarget::Backbuffer { surface } = target {
+                    surface_views_lut.push(surface.acquire()?);
+                }
+            }
+        }
+    }
+
+    let mut encoder = gpu.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("render thread"),
+    });
+
+    let command_offset = 0;
+    let mut next_surface_index = 0;
+    for pass in ctx.passes {
+        let mut color_attachments = Vec::new();
+        for (i, target) in pass.target.color_targets.iter().enumerate() {
+            if let Some(target) = target.as_ref() {
+                let view = match target {
+                    ColorTarget::Backbuffer { .. } => {
+                        // We stored the acquired texture views for the surface in the surface views LUT previously.
+                        let view = &surface_views_lut[next_surface_index];
+                        next_surface_index += 1;
+                        view
+                    }
+                };
+
+                let attachment = wgpu::RenderPassColorAttachment {
+                    view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: match pass.clear_colors[i] {
+                            Some(color) => wgpu::LoadOp::Clear(color.into()),
+                            None => wgpu::LoadOp::Load,
+                        },
+                        store: wgpu::StoreOp::Store,
+                    },
+                };
+
+                color_attachments.push(Some(attachment));
+            }
+        }
+
+        let _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: pass.label.as_deref(),
+            color_attachments: &color_attachments,
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+
+        for _draw in &ctx.draws[command_offset..pass.commands] {}
     }
 
     Ok(())

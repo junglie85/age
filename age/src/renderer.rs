@@ -1,31 +1,20 @@
-use std::{
-    collections::VecDeque,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        mpsc::{Receiver, Sender},
-        Arc, Mutex,
-    },
-};
+use std::sync::Arc;
 
-use crate::{
-    engine::{self, EngineComponent},
-    sys::Window,
-    Engine, Error,
-};
+use crate::{app::Resource, sys::WinitWindow, App, Error};
 
 #[derive(Clone)]
-pub struct Gpu {
-    inner: Arc<GpuInner>,
+pub struct WgpuGpu {
+    inner: Arc<WgpuGpuInner>,
 }
 
-struct GpuInner {
+struct WgpuGpuInner {
     instance: wgpu::Instance,
     adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
 }
 
-impl Gpu {
+impl WgpuGpu {
     pub(crate) fn init() -> Result<Self, Error> {
         let flags = if cfg!(debug_assertions) {
             wgpu::InstanceFlags::DEBUG | wgpu::InstanceFlags::VALIDATION
@@ -87,7 +76,7 @@ impl Gpu {
         };
 
         Ok(Self {
-            inner: Arc::new(GpuInner {
+            inner: Arc::new(WgpuGpuInner {
                 instance,
                 adapter,
                 device,
@@ -112,14 +101,14 @@ impl Gpu {
         &self.inner.queue
     }
 
-    fn create_surface(&self, window: Window) -> Result<wgpu::Surface<'_>, Error> {
+    fn create_surface(&self, window: WinitWindow) -> Result<wgpu::Surface<'_>, Error> {
         let surface = self.get_instance().create_surface(window)?;
 
         Ok(surface)
     }
 }
 
-impl EngineComponent for Gpu {
+impl Resource for WgpuGpu {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -135,19 +124,22 @@ impl From<wgpu::CreateSurfaceError> for Error {
     }
 }
 
-pub(crate) struct Renderer {}
+pub(crate) struct WgpuRenderer {
+    gpu: WgpuGpu,
+}
 
-impl Renderer {
-    pub(crate) fn init() -> Self {
-        Self {}
+impl WgpuRenderer {
+    pub(crate) fn init(gpu: &WgpuGpu) -> Self {
+        Self { gpu: gpu.clone() }
     }
 }
 
-impl EngineComponent for Renderer {
-    fn on_resume(&mut self, engine: &mut Engine) {
-        let window = engine.get_component::<Window>();
-        let gpu = engine.get_component::<Gpu>();
-        gpu.create_surface(window.clone());
+impl Resource for WgpuRenderer {
+    fn on_resume(&mut self, app: &mut App) {
+        let window = app.get_resource::<WinitWindow>();
+        // todo: what to do with the surface?
+        self.gpu.create_surface(window.clone());
+        // todo: let's add backbuffer as a resource in the app.
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -158,3 +150,17 @@ impl EngineComponent for Renderer {
         self
     }
 }
+
+pub trait Renderer {
+    fn get_backbuffer(&self) -> Backbuffer;
+}
+
+impl Renderer for App {
+    fn get_backbuffer(&self) -> Backbuffer {
+        // Backbuffer needs to be clone because we want to do app.set_target(app.get_backbuffer()) but set target needs exclusive borrow.
+        todo!()
+    }
+}
+
+#[derive(Clone)]
+pub struct Backbuffer {}

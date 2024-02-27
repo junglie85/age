@@ -1,27 +1,17 @@
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 
 use winit::{dpi::LogicalSize, event_loop::ControlFlow};
 
-use crate::{engine::EngineComponent, error::Error, Engine};
+use crate::{app::Resource, error::Error, App};
 
-pub(crate) struct Sys {
+pub(crate) struct EventLoop {
     el: Option<winit::event_loop::EventLoop<()>>,
 }
 
-impl Sys {
+impl EventLoop {
     pub(crate) fn init() -> Result<Self, Error> {
         let el = Some(winit::event_loop::EventLoopBuilder::new().build()?);
         Ok(Self { el })
-    }
-
-    pub(crate) fn create_window(&self, width: u32, height: u32) -> Result<Window, Error> {
-        let size = LogicalSize::new(width, height);
-        let w = winit::window::WindowBuilder::new()
-            .with_title("age")
-            .with_inner_size(size)
-            .with_visible(false)
-            .build(self.el.as_ref().unwrap())?;
-        Ok(Window { w: Arc::new(w) })
     }
 
     pub(crate) fn run<F>(mut self, mut handler: F) -> Result<(), Error>
@@ -61,6 +51,15 @@ impl Sys {
     }
 }
 
+impl Deref for EventLoop {
+    type Target = winit::event_loop::EventLoop<()>;
+
+    fn deref(&self) -> &Self::Target {
+        // This is safe because we create the winit event loop on init and don't consume it until run.
+        self.el.as_ref().unwrap()
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct Platform {
     exit: bool,
@@ -76,16 +75,26 @@ impl Platform {
 pub(crate) struct WindowId(winit::window::WindowId);
 
 #[derive(Clone)]
-pub struct Window {
+pub struct WinitWindow {
     w: Arc<winit::window::Window>,
 }
 
-impl Window {
+impl WinitWindow {
+    pub(crate) fn init(width: u32, height: u32, el: &EventLoop) -> Result<WinitWindow, Error> {
+        let size = LogicalSize::new(width, height);
+        let w = winit::window::WindowBuilder::new()
+            .with_title("AGE")
+            .with_inner_size(size)
+            .with_visible(false)
+            .build(el)?;
+        Ok(WinitWindow { w: Arc::new(w) })
+    }
+
     pub(crate) fn get_id(&self) -> WindowId {
         WindowId(self.w.id())
     }
 
-    pub(crate) fn get_size(&self) -> (u32, u32) {
+    pub fn get_size(&self) -> (u32, u32) {
         self.w.inner_size().into()
     }
 
@@ -97,13 +106,13 @@ impl Window {
         self.w.pre_present_notify();
     }
 
-    pub(crate) fn set_visible(&self, visible: bool) {
+    pub fn set_visible(&self, visible: bool) {
         self.w.set_visible(visible);
     }
 }
 
-impl EngineComponent for Window {
-    fn on_resume(&mut self, engine: &mut Engine) {
+impl Resource for WinitWindow {
+    fn on_resume(&mut self, app: &mut App) {
         println!("window on_resume")
     }
 
@@ -116,7 +125,11 @@ impl EngineComponent for Window {
     }
 }
 
-impl raw_window_handle::HasDisplayHandle for Window {
+pub trait Window {}
+
+impl Window for WinitWindow {}
+
+impl raw_window_handle::HasDisplayHandle for WinitWindow {
     fn display_handle(
         &self,
     ) -> Result<raw_window_handle::DisplayHandle<'_>, raw_window_handle::HandleError> {
@@ -124,7 +137,7 @@ impl raw_window_handle::HasDisplayHandle for Window {
     }
 }
 
-impl raw_window_handle::HasWindowHandle for Window {
+impl raw_window_handle::HasWindowHandle for WinitWindow {
     fn window_handle(
         &self,
     ) -> Result<raw_window_handle::WindowHandle<'_>, raw_window_handle::HandleError> {

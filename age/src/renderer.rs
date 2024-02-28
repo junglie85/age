@@ -1,7 +1,8 @@
 use std::{
     borrow::Cow,
+    collections::VecDeque,
     ops::{Deref, Range},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use crate::{sys::Window, Color, Error};
@@ -9,6 +10,7 @@ use crate::{sys::Window, Color, Error};
 #[derive(Clone)]
 pub struct Gpu {
     inner: Arc<GpuInner>,
+    pool: Arc<Mutex<VecDeque<CommandBuffer>>>,
 }
 
 struct GpuInner {
@@ -19,6 +21,8 @@ struct GpuInner {
 }
 
 impl Gpu {
+    const INITIAL_POOL_SIZE: usize = 2;
+
     pub(crate) fn init() -> Result<Self, Error> {
         let flags = if cfg!(debug_assertions) {
             wgpu::InstanceFlags::DEBUG | wgpu::InstanceFlags::VALIDATION
@@ -79,6 +83,11 @@ impl Gpu {
             }
         };
 
+        let mut pool = VecDeque::new();
+        for _ in 0..Self::INITIAL_POOL_SIZE {
+            pool.push_back(CommandBuffer::new());
+        }
+
         Ok(Self {
             inner: Arc::new(GpuInner {
                 instance,
@@ -86,6 +95,7 @@ impl Gpu {
                 device,
                 queue,
             }),
+            pool: Arc::new(Mutex::new(pool)),
         })
     }
 
@@ -175,9 +185,30 @@ impl Gpu {
         Shader { shader }
     }
 
-    pub fn submit(&self, buf: &CommandBuffer) {
-        let buf = buf.clone();
+    pub fn get_command_buffer(&self) -> CommandBuffer {
+        match self
+            .pool
+            .lock()
+            .expect("failed to acquire lock on command buffer pool")
+            .pop_front()
+        {
+            Some(buf) => buf,
+            None => {
+                println!("no buffers in pool, creating new command buffer");
+                CommandBuffer::new()
+            }
+        }
+    }
 
+    fn return_command_buffer(&self, mut buf: CommandBuffer) {
+        buf.reset();
+        self.pool
+            .lock()
+            .expect("failed to acquire lock on command buffer pool")
+            .push_back(buf);
+    }
+
+    pub fn submit(&self, buf: CommandBuffer) {
         let mut encoder =
             self.get_device()
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -220,6 +251,7 @@ impl Gpu {
         }
 
         self.get_queue().submit([encoder.finish()]);
+        self.return_command_buffer(buf);
     }
 }
 
@@ -280,7 +312,7 @@ pub struct CommandBuffer {
 }
 
 impl CommandBuffer {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             render_pipeline: None,
             passes: Vec::new(),
@@ -317,7 +349,7 @@ impl CommandBuffer {
         });
     }
 
-    pub fn recall(&mut self) {
+    fn reset(&mut self) {
         self.render_pipeline = None;
         self.passes.clear();
         self.draws.clear();

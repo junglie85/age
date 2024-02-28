@@ -1,12 +1,11 @@
 use std::process::ExitCode;
 
 use age::{
-    App, Color, CommandBuffer, Error, Game, PipelineLayoutDesc, RenderPipeline, RenderPipelineDesc,
-    ShaderDesc, TextureFormat,
+    App, Color, Error, Game, PipelineLayoutDesc, RenderPipeline, RenderPipelineDesc, ShaderDesc,
+    TextureFormat,
 };
 
 struct Sandbox {
-    buf: CommandBuffer,
     pipeline: RenderPipeline,
 }
 
@@ -28,21 +27,16 @@ impl Game for Sandbox {
             format: TextureFormat::Bgra8Unorm,
         });
 
-        Ok(Self {
-            buf: CommandBuffer::new(),
-            pipeline,
-        })
+        Ok(Self { pipeline })
     }
 
     fn on_update(&mut self, app: &mut App) {
-        self.buf
-            .begin_render_pass(app.get_backbuffer(), Some(Color::RED));
+        let mut buf = app.gpu.get_command_buffer();
+        buf.begin_render_pass(app.get_backbuffer(), Some(Color::RED));
+        buf.set_render_pipeline(&self.pipeline); // this will come from the sprite's material. could be a default pipeline based on the renderer/pass type?
+        buf.draw(0..3, 0..1);
 
-        self.buf.set_render_pipeline(&self.pipeline); // this will come from the sprite's material. could be a default pipeline based on the renderer/pass type?
-        self.buf.draw(0..3, 0..1);
-
-        app.gpu.submit(&self.buf);
-        self.buf.recall();
+        app.gpu.submit(buf);
     }
 }
 

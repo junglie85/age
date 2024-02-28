@@ -2,7 +2,7 @@ use crate::{
     error::Error,
     renderer::{Gpu, Renderer},
     sys::{Event, EventLoop, Window},
-    Game,
+    Backbuffer, Game, RenderTarget,
 };
 
 pub(crate) fn run<G: Game>() -> Result<(), Error> {
@@ -22,8 +22,8 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
     //     })?;
 
     let mut app = App {
-        window,
         gpu,
+        backbuffer: Backbuffer::new(),
         renderer,
         exit: false,
     };
@@ -35,12 +35,12 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
             Event::ExitRequested => game.on_exit_requested(&mut app),
 
             Event::PlatformReady => {
-                app.on_resume();
+                app.on_platform_ready(&window)?;
             }
 
             Event::Update => {
                 game.on_update(&mut app);
-                app.post_update();
+                app.post_update(&window);
             }
         };
 
@@ -59,32 +59,37 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
     Ok(())
 }
 
-pub struct App {
-    pub window: Window,
+pub struct App<'app> {
     pub gpu: Gpu,
+    pub backbuffer: Backbuffer<'app>,
     pub renderer: Renderer,
     exit: bool,
 }
 
-impl App {
+impl<'app> App<'app> {
     pub fn exit(&mut self) {
         self.exit = true;
     }
 
-    fn on_resume(&mut self) {
-        // self.gpu.create_backbuffer(self.window.clone());
-        self.window.set_visible(true);
+    pub fn get_backbuffer(&mut self) -> RenderTarget {
+        (&mut self.backbuffer).into()
     }
 
-    fn post_update(&mut self) {
+    fn post_update(&mut self, window: &Window) {
         // let render_ctx = self.gpu.get_render_context();
         // let render_ctx = std::mem::replace(&mut self.render_ctx, render_ctx);
 
         // render_proxy.dispatch(render_ctx);
+        window.pre_present();
+        self.backbuffer.present();
+        window.post_present();
+    }
 
-        self.window.pre_present();
-        // self.gpu.present(self.backbuffer);
-        self.window.post_present();
+    fn on_platform_ready(&mut self, window: &'app Window) -> Result<(), Error> {
+        self.backbuffer.resume(&self.gpu, window)?;
+        window.set_visible(true);
+
+        Ok(())
     }
 
     fn should_exit(&self) -> bool {

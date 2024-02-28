@@ -2,7 +2,7 @@ use std::{ops::Deref, sync::Arc};
 
 use winit::{dpi::LogicalSize, event_loop::ControlFlow};
 
-use crate::{error::Error, App};
+use crate::error::Error;
 
 pub(crate) struct EventLoop {
     el: Option<winit::event_loop::EventLoop<()>>,
@@ -71,9 +71,6 @@ impl Platform {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct WindowId(winit::window::WindowId);
-
 #[derive(Clone)]
 pub struct Window {
     w: Arc<winit::window::Window>,
@@ -88,10 +85,6 @@ impl Window {
             .with_visible(false)
             .build(el)?;
         Ok(Window { w: Arc::new(w) })
-    }
-
-    pub(crate) fn get_id(&self) -> WindowId {
-        WindowId(self.w.id())
     }
 
     pub fn get_size(&self) -> (u32, u32) {

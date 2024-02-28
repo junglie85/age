@@ -1,6 +1,6 @@
 use crate::{
+    device::RenderDevice,
     error::Error,
-    renderer::{Gpu, Renderer},
     sys::{Event, EventLoop, Window},
     Backbuffer, Game, RenderTarget,
 };
@@ -11,20 +11,11 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
 
     let el = EventLoop::init()?;
     let window = Window::init(width, height, &el)?;
-    let gpu = Gpu::init()?;
-    let renderer = Renderer::init(&gpu);
-    // let render_thread = std::thread::Builder::new()
-    //     .name("render thread".to_string())
-    //     .spawn(|| {
-    //         if let Err(err) = render_thread_main(renderer) {
-    //             panic!("render thread error: {err}");
-    //         }
-    //     })?;
+    let device = RenderDevice::init()?;
 
     let mut app = App {
-        gpu,
+        device,
         backbuffer: Backbuffer::new(),
-        renderer,
         exit: false,
     };
 
@@ -51,18 +42,12 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
         Ok(())
     })?;
 
-    // render_proxy.stop_render_thread();
-    // render_thread
-    //     .join()
-    //     .map_err(|err| Error::new(format!("{:?}", err)))?;
-
     Ok(())
 }
 
 pub struct App<'app> {
-    pub gpu: Gpu,
+    pub device: RenderDevice,
     pub backbuffer: Backbuffer<'app>,
-    pub renderer: Renderer,
     exit: bool,
 }
 
@@ -76,17 +61,13 @@ impl<'app> App<'app> {
     }
 
     fn post_update(&mut self, window: &Window) {
-        // let render_ctx = self.gpu.get_render_context();
-        // let render_ctx = std::mem::replace(&mut self.render_ctx, render_ctx);
-
-        // render_proxy.dispatch(render_ctx);
         window.pre_present();
         self.backbuffer.present();
         window.post_present();
     }
 
     fn on_platform_ready(&mut self, window: &'app Window) -> Result<(), Error> {
-        self.backbuffer.resume(&self.gpu, window)?;
+        self.backbuffer.resume(&self.device, window)?;
         window.set_visible(true);
 
         Ok(())

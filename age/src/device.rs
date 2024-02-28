@@ -8,19 +8,19 @@ use std::{
 use crate::{sys::Window, Color, Error};
 
 #[derive(Clone)]
-pub struct Gpu {
-    inner: Arc<GpuInner>,
+pub struct RenderDevice {
+    inner: Arc<RenderDeviceInner>,
     pool: Arc<Mutex<VecDeque<CommandBuffer>>>,
 }
 
-struct GpuInner {
+struct RenderDeviceInner {
     instance: wgpu::Instance,
     adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
 }
 
-impl Gpu {
+impl RenderDevice {
     const INITIAL_POOL_SIZE: usize = 2;
 
     pub(crate) fn init() -> Result<Self, Error> {
@@ -89,7 +89,7 @@ impl Gpu {
         }
 
         Ok(Self {
-            inner: Arc::new(GpuInner {
+            inner: Arc::new(RenderDeviceInner {
                 instance,
                 adapter,
                 device,
@@ -282,21 +282,25 @@ impl<'app> Backbuffer<'app> {
         }
     }
 
-    pub(crate) fn resume(&mut self, gpu: &Gpu, window: &'app Window) -> Result<(), Error> {
+    pub(crate) fn resume(
+        &mut self,
+        device: &RenderDevice,
+        window: &'app Window,
+    ) -> Result<(), Error> {
         if self.surface.is_some() {
             return Err(Error::new("backbuffer is already resumed"));
         }
 
         let (width, height) = window.get_size();
-        let surface = gpu.create_surface(window)?;
-        let mut config = match surface.get_default_config(gpu.get_adapter(), width, height) {
+        let surface = device.create_surface(window)?;
+        let mut config = match surface.get_default_config(device.get_adapter(), width, height) {
             Some(config) => config,
             None => return Err(Error::new("backbuffer surface is not supported")),
         };
 
         config.format = wgpu::TextureFormat::Bgra8Unorm; // todo.
 
-        surface.configure(gpu.get_device(), &config);
+        surface.configure(device.get_device(), &config);
         self.surface = Some(surface);
         self.config = Some(config);
 
@@ -484,16 +488,5 @@ impl TryFrom<wgpu::TextureFormat> for TextureFormat {
             wgpu::TextureFormat::Rgba8Unorm => Ok(TextureFormat::Rgba8Unorm),
             _ => Err(Error::new("unsupported texture format")),
         }
-    }
-}
-
-pub struct Renderer {
-    #[allow(dead_code)]
-    gpu: Gpu,
-}
-
-impl Renderer {
-    pub(crate) fn init(gpu: &Gpu) -> Self {
-        Self { gpu: gpu.clone() }
     }
 }

@@ -2,14 +2,14 @@ use std::process::ExitCode;
 
 pub use app::*;
 pub use color::*;
+pub use device::*;
 pub use error::Error;
-pub use renderer::*;
 
 mod app;
 mod color;
+mod device;
 mod error;
 pub mod math;
-mod renderer;
 mod sys;
 pub mod util;
 

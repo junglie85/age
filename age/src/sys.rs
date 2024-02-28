@@ -2,7 +2,7 @@ use std::{ops::Deref, sync::Arc};
 
 use winit::{dpi::LogicalSize, event_loop::ControlFlow};
 
-use crate::{app::Resource, error::Error, App};
+use crate::{error::Error, App};
 
 pub(crate) struct EventLoop {
     el: Option<winit::event_loop::EventLoop<()>>,
@@ -75,19 +75,19 @@ impl Platform {
 pub(crate) struct WindowId(winit::window::WindowId);
 
 #[derive(Clone)]
-pub struct WinitWindow {
+pub struct Window {
     w: Arc<winit::window::Window>,
 }
 
-impl WinitWindow {
-    pub(crate) fn init(width: u32, height: u32, el: &EventLoop) -> Result<WinitWindow, Error> {
+impl Window {
+    pub(crate) fn init(width: u32, height: u32, el: &EventLoop) -> Result<Window, Error> {
         let size = LogicalSize::new(width, height);
         let w = winit::window::WindowBuilder::new()
             .with_title("AGE")
             .with_inner_size(size)
             .with_visible(false)
             .build(el)?;
-        Ok(WinitWindow { w: Arc::new(w) })
+        Ok(Window { w: Arc::new(w) })
     }
 
     pub(crate) fn get_id(&self) -> WindowId {
@@ -111,25 +111,7 @@ impl WinitWindow {
     }
 }
 
-impl Resource for WinitWindow {
-    fn on_resume(&mut self, app: &mut App) {
-        println!("window on_resume")
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-}
-
-pub trait Window {}
-
-impl Window for WinitWindow {}
-
-impl raw_window_handle::HasDisplayHandle for WinitWindow {
+impl raw_window_handle::HasDisplayHandle for Window {
     fn display_handle(
         &self,
     ) -> Result<raw_window_handle::DisplayHandle<'_>, raw_window_handle::HandleError> {
@@ -137,7 +119,7 @@ impl raw_window_handle::HasDisplayHandle for WinitWindow {
     }
 }
 
-impl raw_window_handle::HasWindowHandle for WinitWindow {
+impl raw_window_handle::HasWindowHandle for Window {
     fn window_handle(
         &self,
     ) -> Result<raw_window_handle::WindowHandle<'_>, raw_window_handle::HandleError> {

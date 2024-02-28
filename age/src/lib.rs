@@ -3,13 +3,11 @@ use std::process::ExitCode;
 pub use app::*;
 pub use color::*;
 pub use error::Error;
-pub use graphics::*;
 pub use renderer::*;
 
 mod app;
 mod color;
 mod error;
-mod graphics;
 pub mod math;
 mod renderer;
 mod sys;

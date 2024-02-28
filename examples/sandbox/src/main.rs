@@ -1,6 +1,6 @@
 use std::process::ExitCode;
 
-use age::{App, Color, Error, Game, Graphics, Renderer};
+use age::{App, Color, Error, Game};
 
 struct Sandbox {}
 
@@ -10,8 +10,9 @@ impl Game for Sandbox {
     }
 
     fn on_update(&mut self, app: &mut App) {
-        app.set_draw_target(app.get_backbuffer());
-        app.clear(Color::RED);
+        // app.set_draw_target(app.get_backbuffer());
+        // app.clear(Color::RED);
+        // app.renderer.get_command_buffer();
     }
 }
 

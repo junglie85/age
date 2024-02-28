@@ -1,20 +1,20 @@
 use std::sync::Arc;
 
-use crate::{app::Resource, sys::WinitWindow, App, Error};
+use crate::{sys::Window, App, Error};
 
 #[derive(Clone)]
-pub struct WgpuGpu {
-    inner: Arc<WgpuGpuInner>,
+pub struct Gpu {
+    inner: Arc<GpuInner>,
 }
 
-struct WgpuGpuInner {
+struct GpuInner {
     instance: wgpu::Instance,
     adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
 }
 
-impl WgpuGpu {
+impl Gpu {
     pub(crate) fn init() -> Result<Self, Error> {
         let flags = if cfg!(debug_assertions) {
             wgpu::InstanceFlags::DEBUG | wgpu::InstanceFlags::VALIDATION
@@ -76,7 +76,7 @@ impl WgpuGpu {
         };
 
         Ok(Self {
-            inner: Arc::new(WgpuGpuInner {
+            inner: Arc::new(GpuInner {
                 instance,
                 adapter,
                 device,
@@ -101,61 +101,28 @@ impl WgpuGpu {
         &self.inner.queue
     }
 
-    fn create_surface(&self, window: WinitWindow) -> Result<wgpu::Surface<'_>, Error> {
+    fn create_surface(&self, window: Window) -> Result<wgpu::Surface<'_>, Error> {
         let surface = self.get_instance().create_surface(window)?;
 
         Ok(surface)
     }
 }
 
-impl Resource for WgpuGpu {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-}
-
 impl From<wgpu::CreateSurfaceError> for Error {
     fn from(value: wgpu::CreateSurfaceError) -> Self {
-        Error::new("failed to create window surface").with_source(value)
+        Error::new("failed to create a surface for the window").with_source(value)
     }
 }
 
-pub(crate) struct WgpuRenderer {
-    gpu: WgpuGpu,
+pub(crate) struct Renderer {
+    gpu: Gpu,
 }
 
-impl WgpuRenderer {
-    pub(crate) fn init(gpu: &WgpuGpu) -> Self {
+impl Renderer {
+    pub(crate) fn init(gpu: &Gpu) -> Self {
         Self { gpu: gpu.clone() }
     }
-}
 
-impl Resource for WgpuRenderer {
-    fn on_resume(&mut self, app: &mut App) {
-        let window = app.get_resource::<WinitWindow>();
-        // todo: what to do with the surface?
-        self.gpu.create_surface(window.clone());
-        // todo: let's add backbuffer as a resource in the app.
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-}
-
-pub trait Renderer {
-    fn get_backbuffer(&self) -> Backbuffer;
-}
-
-impl Renderer for App {
     fn get_backbuffer(&self) -> Backbuffer {
         // Backbuffer needs to be clone because we want to do app.set_target(app.get_backbuffer()) but set target needs exclusive borrow.
         todo!()
@@ -164,3 +131,21 @@ impl Renderer for App {
 
 #[derive(Clone)]
 pub struct Backbuffer {}
+
+// todo: draw target can have multiple color attachments. we want to be able to convert the following into a target:
+// - backbuffer
+// - render texture
+// - framebuffer / gbuffer (multiple render_textures), eventually - might take some rework elsewhere.
+pub struct RenderTarget {
+    color_targets: [(); Self::MAX_COLOR_TARGETS],
+}
+
+impl RenderTarget {
+    const MAX_COLOR_TARGETS: usize = 4;
+}
+
+impl From<Backbuffer> for RenderTarget {
+    fn from(backbuffer: Backbuffer) -> Self {
+        todo!()
+    }
+}

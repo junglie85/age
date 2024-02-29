@@ -1,4 +1,4 @@
-use std::ops::Deref;
+use std::{ops::Deref, sync::Arc};
 
 use winit::{dpi::LogicalSize, event_loop::ControlFlow};
 
@@ -75,9 +75,9 @@ impl Platform {
 pub struct WindowId(winit::window::WindowId);
 
 pub struct Window {
-    w: winit::window::Window,
-    pub(crate) st: Option<wgpu::SurfaceTexture>,
-    pub(crate) stv: Option<wgpu::TextureView>,
+    w: Arc<winit::window::Window>,
+    surface_texture: Option<wgpu::SurfaceTexture>,
+    surface_texture_view: Option<wgpu::TextureView>,
 }
 
 impl Window {
@@ -89,14 +89,22 @@ impl Window {
             .with_visible(false)
             .build(el)?;
         Ok(Window {
-            w,
-            st: None,
-            stv: None,
+            w: Arc::new(w),
+            surface_texture: None,
+            surface_texture_view: None,
         })
+    }
+
+    pub(crate) fn get_handle(&self) -> WindowHandle {
+        WindowHandle { w: self.w.clone() }
     }
 
     pub fn get_id(&self) -> WindowId {
         WindowId(self.w.id())
+    }
+
+    pub(crate) fn get_name(&self) -> Option<&str> {
+        Some("primary window")
     }
 
     pub fn get_size(&self) -> (u32, u32) {
@@ -104,10 +112,31 @@ impl Window {
     }
 
     pub(crate) fn present(&mut self) {
+        assert!(
+            self.surface_texture.is_some(),
+            "surface texture has not been set"
+        );
+
         self.w.pre_present_notify();
-        self.st.take().expect("no surface texture").present();
-        self.stv = None;
+        self.surface_texture.take().unwrap().present();
+        self.surface_texture_view = None;
         self.w.request_redraw();
+    }
+
+    pub(crate) fn set_surface_texture(&mut self, surface_texture: wgpu::SurfaceTexture) {
+        self.surface_texture = Some(surface_texture);
+    }
+
+    pub(crate) fn get_surface_texture_view(&self) -> &wgpu::TextureView {
+        assert!(
+            self.surface_texture_view.is_some(),
+            "surface texture view has not been set"
+        );
+        self.surface_texture_view.as_ref().unwrap()
+    }
+
+    pub(crate) fn set_surface_texture_view(&mut self, view: wgpu::TextureView) {
+        self.surface_texture_view = Some(view);
     }
 
     pub fn set_visible(&self, visible: bool) {
@@ -115,7 +144,11 @@ impl Window {
     }
 }
 
-impl raw_window_handle::HasDisplayHandle for Window {
+pub struct WindowHandle {
+    w: Arc<winit::window::Window>,
+}
+
+impl raw_window_handle::HasDisplayHandle for WindowHandle {
     fn display_handle(
         &self,
     ) -> Result<raw_window_handle::DisplayHandle<'_>, raw_window_handle::HandleError> {
@@ -123,7 +156,7 @@ impl raw_window_handle::HasDisplayHandle for Window {
     }
 }
 
-impl raw_window_handle::HasWindowHandle for Window {
+impl raw_window_handle::HasWindowHandle for WindowHandle {
     fn window_handle(
         &self,
     ) -> Result<raw_window_handle::WindowHandle<'_>, raw_window_handle::HandleError> {

@@ -32,11 +32,11 @@ impl Game for Sandbox {
 
     fn on_update(&mut self, app: &mut App) {
         let mut buf = app.device.get_command_buffer();
-        buf.begin_render_pass(app.get_backbuffer(), Some(Color::RED));
+        buf.begin_render_pass(&app.window, Some(Color::RED));
         buf.set_render_pipeline(&self.pipeline); // this will come from the sprite's material. could be a default pipeline based on the renderer/pass type?
         buf.draw(0..3, 0..1);
 
-        app.device.submit(buf, &app.window);
+        app.device.enqueue(buf);
     }
 }
 

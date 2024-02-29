@@ -58,7 +58,8 @@ impl App {
 
     fn post_update(&mut self) -> Result<(), Error> {
         // sync
-        self.device.prepare_window(&self.window)?;
+        self.device.prepare_window(&mut self.window)?;
+        self.device.submit(&self.window);
         self.window.present();
 
         Ok(())

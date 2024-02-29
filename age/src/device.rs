@@ -5,8 +5,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use wgpu::TextureViewDescriptor;
-
 use crate::{
     sys::{Window, WindowId},
     Color, Error,
@@ -17,6 +15,7 @@ pub struct RenderDevice {
     inner: Arc<RenderDeviceInner>,
     pool: Arc<Mutex<VecDeque<CommandBuffer>>>,
     backbuffers: Arc<Mutex<HashMap<WindowId, Backbuffer>>>,
+    command_buffer: Arc<Mutex<Option<CommandBuffer>>>,
 }
 
 struct RenderDeviceInner {
@@ -103,6 +102,7 @@ impl RenderDevice {
             }),
             pool: Arc::new(Mutex::new(pool)),
             backbuffers: Arc::new(Mutex::new(HashMap::new())),
+            command_buffer: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -120,32 +120,6 @@ impl RenderDevice {
 
     fn get_queue(&self) -> &wgpu::Queue {
         &self.inner.queue
-    }
-
-    fn create_backbuffer_surface(&self, window: &Window) -> Result<(), Error> {
-        let mut backbuffers = self.backbuffers.lock().expect("couldn't lock");
-        for (id, backbuffer) in backbuffers.iter_mut() {
-            let window = window.clone();
-            if backbuffer.surface.is_some() {
-                return Err(Error::new("backbuffer is already resumed"));
-            }
-
-            let (width, height) = window.get_size();
-            // todo: Can the window handles be Arc?
-            let surface = self.get_instance().create_surface(window)?;
-            let mut config = match surface.get_default_config(self.get_adapter(), width, height) {
-                Some(config) => config,
-                None => return Err(Error::new("backbuffer surface is not supported")),
-            };
-
-            config.format = wgpu::TextureFormat::Bgra8Unorm; // todo.
-
-            surface.configure(self.get_device(), &config);
-            backbuffer.surface = Some(surface);
-            backbuffer.config = Some(config);
-        }
-
-        Ok(())
     }
 
     pub fn create_pipeline_layout(&self, desc: &PipelineLayoutDesc) -> PipelineLayout {
@@ -235,16 +209,78 @@ impl RenderDevice {
             .push_back(buf);
     }
 
-    pub(crate) fn prepare_window(&self, window: &Window) -> Result<(), Error> {
-        // create backbuffer if not exist.
-        let backbuffers = self.backbuffers.lock().expect("couldn't lock");
+    pub(crate) fn prepare_window(&self, window: &mut Window) -> Result<(), Error> {
+        let mut backbuffers = self
+            .backbuffers
+            .lock()
+            .expect("failed to acquire lock on backbuffers");
+
+        // create backbuffer if it does not yet exist.
+        let backbuffer = backbuffers
+            .entry(window.get_id())
+            .or_insert_with(Backbuffer::new);
+
+        if backbuffer.surface.is_none() {
+            let (width, height) = window.get_size();
+            let surface = self.get_instance().create_surface(window.get_handle())?;
+            let mut config = match surface.get_default_config(self.get_adapter(), width, height) {
+                Some(config) => config,
+                None => return Err(Error::new("backbuffer surface is not supported")),
+            };
+
+            config.format = wgpu::TextureFormat::Bgra8Unorm; // todo.
+
+            surface.configure(self.get_device(), &config);
+            backbuffer.surface = Some(surface);
+            backbuffer.config = Some(config);
+        }
+
+        // todo: Could handle surface resized here too.
 
         // create surface texture and surface view.
+        let config = backbuffer.config.as_ref().unwrap();
+        let surface_texture = backbuffer.surface.as_ref().unwrap().get_current_texture()?;
+        let view = surface_texture
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor {
+                label: window.get_name(),
+                format: Some(config.format),
+                dimension: Some(wgpu::TextureViewDimension::D2),
+                aspect: wgpu::TextureAspect::All,
+                base_mip_level: 0,
+                mip_level_count: None,
+                base_array_layer: 0,
+                array_layer_count: None,
+            });
+
+        window.set_surface_texture(surface_texture);
+        window.set_surface_texture_view(view);
 
         Ok(())
     }
 
-    pub fn submit(&self, buf: CommandBuffer, window: &Window) {
+    pub fn enqueue(&self, buf: CommandBuffer) {
+        let mut command_buffer = self
+            .command_buffer
+            .lock()
+            .expect("failed to acquire lock on command buffer");
+        if command_buffer.is_some() {
+            panic!("have not processed previous command buffer. there is either a problem with thread synchronisation or multiple buffers per frame needs to be supproted");
+        }
+
+        *command_buffer = Some(buf);
+    }
+
+    pub fn submit(&self, window: &Window) {
+        let Some(buf) = self
+            .command_buffer
+            .lock()
+            .expect("failed to acquire lock on command buffer")
+            .take()
+        else {
+            return;
+        };
+
         let mut encoder =
             self.get_device()
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -257,7 +293,7 @@ impl RenderDevice {
                 let view = match color_target {
                     ColorTarget::Backbuffer(window_id) => {
                         if window.get_id() == *window_id {
-                            window.stv.as_ref().expect("umm")
+                            window.get_surface_texture_view()
                         } else {
                             panic!("window id does not match");
                         }
@@ -265,7 +301,7 @@ impl RenderDevice {
                 };
 
                 let attachment = Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: match pass.clear_colors[i] {
@@ -320,13 +356,6 @@ impl Backbuffer {
         Self {
             surface: None,
             config: None,
-        }
-    }
-
-    fn acquire(&self) -> Result<wgpu::SurfaceTexture, Error> {
-        match self.surface.as_ref() {
-            Some(surface) => Ok(surface.get_current_texture()?),
-            None => Err(Error::new("backbuffer is not initialised")),
         }
     }
 }
@@ -414,27 +443,6 @@ impl RenderTarget {
 enum ColorTarget {
     Backbuffer(WindowId),
 }
-
-// impl<'app> From<&mut Backbuffer<'app>> for RenderTarget {
-//     fn from(backbuffer: &mut Backbuffer) -> Self {
-//         assert!(backbuffer.surface.is_some(), "surface is not created");
-
-//         let surface = backbuffer.surface.as_mut().unwrap();
-//         let surface_texture = surface.get_current_texture().unwrap(); // todo: handle this better.
-//         let view = surface_texture
-//             .texture
-//             .create_view(&wgpu::TextureViewDescriptor {
-//                 label: Some("backbuffer"),
-//                 ..Default::default()
-//             });
-
-//         backbuffer.surface_texture = Some(surface_texture);
-
-//         RenderTarget {
-//             color_targets: [view],
-//         }
-//     }
-// }
 
 impl From<&Window> for RenderTarget {
     fn from(window: &Window) -> Self {

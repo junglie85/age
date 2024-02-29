@@ -2,7 +2,7 @@ use std::process::ExitCode;
 
 pub use app::*;
 pub use color::*;
-pub use device::*;
+pub use device::{RenderDevice, RenderProxy};
 pub use error::Error;
 
 mod app;

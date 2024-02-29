@@ -2,7 +2,12 @@ use std::{
     borrow::Cow,
     collections::{HashMap, VecDeque},
     ops::{Deref, Range},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc::{Receiver, Sender},
+        Arc, Mutex,
+    },
+    thread::JoinHandle,
 };
 
 use crate::{
@@ -258,80 +263,6 @@ impl RenderDevice {
 
         Ok(())
     }
-
-    pub fn enqueue(&self, buf: CommandBuffer) {
-        let mut command_buffer = self
-            .command_buffer
-            .lock()
-            .expect("failed to acquire lock on command buffer");
-        if command_buffer.is_some() {
-            panic!("have not processed previous command buffer. there is either a problem with thread synchronisation or multiple buffers per frame needs to be supproted");
-        }
-
-        *command_buffer = Some(buf);
-    }
-
-    pub fn submit(&self, window: &Window) {
-        let Some(buf) = self
-            .command_buffer
-            .lock()
-            .expect("failed to acquire lock on command buffer")
-            .take()
-        else {
-            return;
-        };
-
-        let mut encoder =
-            self.get_device()
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("submit"),
-                });
-
-        for pass in buf.passes.iter() {
-            let mut color_attachments = Vec::with_capacity(pass.target.color_targets.len());
-            for (i, color_target) in pass.target.color_targets.iter().enumerate() {
-                let view = match color_target {
-                    ColorTarget::Backbuffer(window_id) => {
-                        if window.get_id() == *window_id {
-                            window.get_surface_texture_view()
-                        } else {
-                            panic!("window id does not match");
-                        }
-                    }
-                };
-
-                let attachment = Some(wgpu::RenderPassColorAttachment {
-                    view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: match pass.clear_colors[i] {
-                            Some(c) => wgpu::LoadOp::Clear(c.into()),
-                            None => wgpu::LoadOp::Load,
-                        },
-                        store: wgpu::StoreOp::Store,
-                    },
-                });
-
-                color_attachments.push(attachment);
-            }
-
-            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: None,
-                color_attachments: &color_attachments,
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-
-            for draw in &buf.draws[pass.draws.clone()] {
-                rpass.set_pipeline(&draw.pipeline);
-                rpass.draw(draw.vertices.clone(), draw.instances.clone())
-            }
-        }
-
-        self.get_queue().submit([encoder.finish()]);
-        self.return_command_buffer(buf);
-    }
 }
 
 impl From<wgpu::CreateSurfaceError> for Error {
@@ -532,4 +463,157 @@ impl TryFrom<wgpu::TextureFormat> for TextureFormat {
             _ => Err(Error::new("unsupported texture format")),
         }
     }
+}
+
+enum RenderMessage {
+    Enqueue(CommandBuffer),
+    Submit,
+}
+
+#[derive(Clone)]
+pub struct RenderProxy {
+    tx: Sender<RenderMessage>,
+    ready_semaphore: Arc<AtomicBool>,
+    stop_semaphore: Arc<AtomicBool>,
+}
+
+impl RenderProxy {
+    pub fn enqueue(&self, buf: CommandBuffer) {
+        todo!()
+    }
+
+    pub fn submit(&self, window: &Window) {
+        // ideally we wouldn't need to pass window down, or the device needs to hold onto the window handle (which is really what we need as it has an arc of the winit window inside).
+        todo!()
+    }
+
+    pub(crate) fn shutdown(&self, thread: JoinHandle<()>) {
+        todo!()
+    }
+
+    pub(crate) fn sync(&self) {
+        todo!()
+    }
+}
+
+pub(crate) fn start_render_thread(
+    device: RenderDevice,
+) -> Result<(JoinHandle<()>, RenderProxy), Error> {
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    let proxy = RenderProxy {
+        tx,
+        ready_semaphore: Arc::new(AtomicBool::new(false)),
+        stop_semaphore: Arc::new(AtomicBool::new(false)),
+    };
+
+    let thread = std::thread::Builder::new()
+        .name("render thread".to_string())
+        .spawn(|| {
+            if let Err(err) = render_thread_main(
+                device,
+                rx,
+                proxy.ready_semaphore.clone(),
+                proxy.stop_semaphore.clone(),
+            ) {
+                eprintln!("{err}");
+            }
+        })?;
+
+    Ok((thread, proxy))
+}
+
+fn render_thread_main(
+    device: RenderDevice,
+    rx: Receiver<RenderMessage>,
+    ready_semaphore: Arc<AtomicBool>,
+    stop_semaphore: Arc<AtomicBool>,
+) -> Result<(), Error> {
+    ready_semaphore.store(true, Ordering::Relaxed);
+
+    while !stop_semaphore.load(Ordering::Relaxed) {
+        for message in rx.try_iter() {
+            match message {
+                RenderMessage::Enqueue(buf) => handle_enqueue(buf, &device),
+                RenderMessage::Submit => handle_submit(&device),
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_enqueue(buf: CommandBuffer, device: &RenderDevice) {
+    // todo: command buffer doesn't need to be on the device anymore, it can be in the render thread outside the loop.
+    let mut command_buffer = device
+        .command_buffer
+        .lock()
+        .expect("failed to acquire lock on command buffer");
+    if command_buffer.is_some() {
+        panic!("have not processed previous command buffer. there is either a problem with thread synchronisation or multiple buffers per frame needs to be supproted");
+    }
+
+    *command_buffer = Some(buf);
+}
+
+fn handle_submit(device: &RenderDevice) {
+    let Some(buf) = device
+        .command_buffer
+        .lock()
+        .expect("failed to acquire lock on command buffer")
+        .take()
+    else {
+        return;
+    };
+
+    let mut encoder = device
+        .get_device()
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("submit"),
+        });
+
+    for pass in buf.passes.iter() {
+        let mut color_attachments = Vec::with_capacity(pass.target.color_targets.len());
+        for (i, color_target) in pass.target.color_targets.iter().enumerate() {
+            let view = match color_target {
+                ColorTarget::Backbuffer(window_id) => {
+                    if window.get_id() == *window_id {
+                        window.get_surface_texture_view()
+                    } else {
+                        panic!("window id does not match");
+                    }
+                }
+            };
+
+            let attachment = Some(wgpu::RenderPassColorAttachment {
+                view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: match pass.clear_colors[i] {
+                        Some(c) => wgpu::LoadOp::Clear(c.into()),
+                        None => wgpu::LoadOp::Load,
+                    },
+                    store: wgpu::StoreOp::Store,
+                },
+            });
+
+            color_attachments.push(attachment);
+        }
+
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: None,
+            color_attachments: &color_attachments,
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+
+        for draw in &buf.draws[pass.draws.clone()] {
+            rpass.set_pipeline(&draw.pipeline);
+            rpass.draw(draw.vertices.clone(), draw.instances.clone())
+        }
+    }
+
+    device.get_queue().submit([encoder.finish()]);
+    device.return_command_buffer(buf);
 }

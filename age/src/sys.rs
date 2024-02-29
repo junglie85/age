@@ -1,4 +1,4 @@
-use std::{ops::Deref, sync::Arc};
+use std::ops::Deref;
 
 use winit::{dpi::LogicalSize, event_loop::ControlFlow};
 
@@ -71,9 +71,13 @@ impl Platform {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct WindowId(winit::window::WindowId);
+
 pub struct Window {
-    w: Arc<winit::window::Window>,
+    w: winit::window::Window,
+    pub(crate) st: Option<wgpu::SurfaceTexture>,
+    pub(crate) stv: Option<wgpu::TextureView>,
 }
 
 impl Window {
@@ -84,19 +88,26 @@ impl Window {
             .with_inner_size(size)
             .with_visible(false)
             .build(el)?;
-        Ok(Window { w: Arc::new(w) })
+        Ok(Window {
+            w,
+            st: None,
+            stv: None,
+        })
+    }
+
+    pub fn get_id(&self) -> WindowId {
+        WindowId(self.w.id())
     }
 
     pub fn get_size(&self) -> (u32, u32) {
         self.w.inner_size().into()
     }
 
-    pub(crate) fn post_present(&self) {
-        self.w.request_redraw();
-    }
-
-    pub(crate) fn pre_present(&self) {
+    pub(crate) fn present(&mut self) {
         self.w.pre_present_notify();
+        self.st.take().expect("no surface texture").present();
+        self.stv = None;
+        self.w.request_redraw();
     }
 
     pub fn set_visible(&self, visible: bool) {

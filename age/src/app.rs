@@ -2,7 +2,7 @@ use crate::{
     device::RenderDevice,
     error::Error,
     sys::{Event, EventLoop, Window},
-    Backbuffer, Game, RenderTarget,
+    Game,
 };
 
 pub(crate) fn run<G: Game>() -> Result<(), Error> {
@@ -14,8 +14,8 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
     let device = RenderDevice::init()?;
 
     let mut app = App {
+        window,
         device,
-        backbuffer: Backbuffer::new(),
         exit: false,
     };
 
@@ -26,12 +26,12 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
             Event::ExitRequested => game.on_exit_requested(&mut app),
 
             Event::PlatformReady => {
-                app.on_platform_ready(&window)?;
+                app.on_platform_ready();
             }
 
             Event::Update => {
                 game.on_update(&mut app);
-                app.post_update(&window);
+                app.post_update()?;
             }
         };
 
@@ -45,32 +45,27 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
     Ok(())
 }
 
-pub struct App<'app> {
+pub struct App {
+    pub window: Window,
     pub device: RenderDevice,
-    pub backbuffer: Backbuffer<'app>,
     exit: bool,
 }
 
-impl<'app> App<'app> {
+impl App {
     pub fn exit(&mut self) {
         self.exit = true;
     }
 
-    pub fn get_backbuffer(&mut self) -> RenderTarget {
-        (&mut self.backbuffer).into()
-    }
-
-    fn post_update(&mut self, window: &Window) {
-        window.pre_present();
-        self.backbuffer.present();
-        window.post_present();
-    }
-
-    fn on_platform_ready(&mut self, window: &'app Window) -> Result<(), Error> {
-        self.backbuffer.resume(&self.device, window)?;
-        window.set_visible(true);
+    fn post_update(&mut self) -> Result<(), Error> {
+        // sync
+        self.device.prepare_window(&self.window)?;
+        self.window.present();
 
         Ok(())
+    }
+
+    fn on_platform_ready(&mut self) {
+        self.window.set_visible(true);
     }
 
     fn should_exit(&self) -> bool {

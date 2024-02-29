@@ -36,7 +36,7 @@ impl Game for Sandbox {
         buf.set_render_pipeline(&self.pipeline); // this will come from the sprite's material. could be a default pipeline based on the renderer/pass type?
         buf.draw(0..3, 0..1);
 
-        app.device.submit(buf);
+        app.device.submit(buf, &app.window);
     }
 }
 

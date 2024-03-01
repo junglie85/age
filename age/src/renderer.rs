@@ -11,7 +11,7 @@ use std::{
 };
 
 use crate::{
-    sys::{Window, WindowId},
+    os::{Window, WindowId},
     Color, Error,
 };
 
@@ -223,17 +223,35 @@ impl From<wgpu::SurfaceError> for Error {
     }
 }
 
-pub struct Backbuffer {
+pub struct WindowSurface {
     surface: Option<wgpu::Surface<'static>>,
     config: Option<wgpu::SurfaceConfiguration>,
+    surface_texture: Option<SurfaceTexture>,
+    surface_texture_view: Option<wgpu::TextureView>,
 }
 
-impl Backbuffer {
+impl WindowSurface {
     pub(crate) fn new() -> Self {
         Self {
             surface: None,
             config: None,
+            surface_texture: None,
+            surface_texture_view: None,
         }
+    }
+}
+
+pub(crate) struct SurfaceTexture(wgpu::SurfaceTexture);
+
+impl SurfaceTexture {
+    pub(crate) fn present(self) {
+        self.0.present();
+    }
+}
+
+impl From<wgpu::SurfaceTexture> for SurfaceTexture {
+    fn from(texture: wgpu::SurfaceTexture) -> Self {
+        Self(texture)
     }
 }
 
@@ -306,7 +324,7 @@ struct DrawCommand {
 }
 
 // todo: draw target can have multiple color attachments. we want to be able to convert the following into a target:
-// - backbuffer
+// - window surface
 // - render texture
 // - framebuffer / gbuffer (multiple render_textures), eventually - might take some rework elsewhere.
 pub struct RenderTarget {
@@ -318,13 +336,13 @@ impl RenderTarget {
 }
 
 enum ColorTarget {
-    Backbuffer(WindowId),
+    WindowSurface(WindowId),
 }
 
 impl From<&Window> for RenderTarget {
     fn from(window: &Window) -> Self {
         RenderTarget {
-            color_targets: [ColorTarget::Backbuffer(window.get_id())],
+            color_targets: [ColorTarget::WindowSurface(window.get_id())],
         }
     }
 }
@@ -494,8 +512,7 @@ fn render_thread_main(
     stop_semaphore: Arc<AtomicBool>,
 ) -> Result<(), Error> {
     let mut windows: HashMap<WindowId, Window> = HashMap::new();
-    let mut backbuffers: HashMap<WindowId, Backbuffer> = HashMap::new();
-    let mut surface_texture_views: HashMap<WindowId, wgpu::TextureView> = HashMap::new();
+    let mut window_surfaces: HashMap<WindowId, WindowSurface> = HashMap::new();
     let mut submitted_command_buffer: Option<CommandBuffer> = None;
 
     windows.insert(window.get_id(), window);
@@ -509,8 +526,7 @@ fn render_thread_main(
                 RenderMessage::Execute => handle_execute(
                     &device,
                     &windows,
-                    &mut backbuffers,
-                    &mut surface_texture_views,
+                    &mut window_surfaces,
                     &mut submitted_command_buffer,
                     &ready_semaphore,
                 )?,
@@ -533,17 +549,74 @@ fn handle_enqueue(buf: CommandBuffer, submitted_command_buffer: &mut Option<Comm
 fn handle_execute(
     device: &RenderDevice,
     windows: &HashMap<WindowId, Window>,
-    backbuffers: &mut HashMap<WindowId, Backbuffer>,
-    surface_texture_views: &mut HashMap<WindowId, wgpu::TextureView>,
+    window_surfaces: &mut HashMap<WindowId, WindowSurface>,
     submitted_command_buffer: &mut Option<CommandBuffer>,
     ready_semaphore: &Arc<AtomicBool>,
 ) -> Result<(), Error> {
-    prepare_window(device, windows, backbuffers, surface_texture_views)?;
-
+    // If nothing is submitted, we might as well return early.
     let Some(buf) = submitted_command_buffer.take() else {
         return Ok(());
     };
 
+    // Prepare window surfaces for rendering.
+    for window in windows.values() {
+        // create window surface if it does not yet exist.
+        let window_surface = window_surfaces
+            .entry(window.get_id())
+            .or_insert_with(WindowSurface::new);
+
+        let new_surface = window_surface.surface.is_none();
+        if new_surface {
+            let (width, height) = window.get_size();
+            let surface = device.get_instance().create_surface(window.get_handle())?;
+            let config = match surface.get_default_config(device.get_adapter(), width, height) {
+                Some(config) => config,
+                None => return Err(Error::new("window surface is not supported")),
+            };
+
+            window_surface.surface = Some(surface);
+            window_surface.config = Some(config);
+        }
+
+        // todo: We could handle changing present mode or surface format here too...
+        let config = window_surface.config.as_mut().unwrap();
+        let (width, height) = window.get_size();
+        let surface_resized = config.width != width || config.height != height;
+
+        if new_surface || surface_resized {
+            config.width = width;
+            config.height = height;
+            config.format = wgpu::TextureFormat::Bgra8Unorm; // todo.
+
+            let surface = window_surface.surface.as_ref().unwrap();
+            surface.configure(device.get_device(), config);
+        }
+
+        // create surface texture and surface view.
+        let config = window_surface.config.as_ref().unwrap();
+        let surface_texture = window_surface
+            .surface
+            .as_ref()
+            .unwrap()
+            .get_current_texture()?;
+        let view = surface_texture
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor {
+                label: window.get_name(),
+                format: Some(config.format),
+                dimension: Some(wgpu::TextureViewDimension::D2),
+                aspect: wgpu::TextureAspect::All,
+                base_mip_level: 0,
+                mip_level_count: None,
+                base_array_layer: 0,
+                array_layer_count: None,
+            });
+
+        window_surface.surface_texture = Some(surface_texture.into());
+        window_surface.surface_texture_view = Some(view);
+    }
+
+    // Do rendering.
     let mut encoder = device
         .get_device()
         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -554,7 +627,10 @@ fn handle_execute(
         let mut color_attachments = Vec::with_capacity(pass.target.color_targets.len());
         for (i, color_target) in pass.target.color_targets.iter().enumerate() {
             let view = match color_target {
-                ColorTarget::Backbuffer(window_id) => &surface_texture_views[window_id],
+                ColorTarget::WindowSurface(window_id) => window_surfaces[window_id]
+                    .surface_texture_view
+                    .as_ref()
+                    .unwrap(),
             };
 
             let attachment = Some(wgpu::RenderPassColorAttachment {
@@ -589,69 +665,18 @@ fn handle_execute(
     device.get_queue().submit([encoder.finish()]);
     device.return_command_buffer(buf);
 
+    // Present the surface textures for each window.
     for window in windows.values() {
-        // todo: move calles to pre, present, post, to here.
-        window.present();
-    }
-
-    ready_semaphore.store(true, Ordering::Relaxed);
-
-    Ok(())
-}
-
-fn prepare_window(
-    device: &RenderDevice,
-    windows: &HashMap<WindowId, Window>,
-    backbuffers: &mut HashMap<WindowId, Backbuffer>,
-    surface_texture_views: &mut HashMap<WindowId, wgpu::TextureView>,
-) -> Result<(), Error> {
-    println!("prepare windows");
-
-    for window in windows.values() {
-        // create backbuffer if it does not yet exist.
-        let backbuffer = backbuffers
-            .entry(window.get_id())
-            .or_insert_with(Backbuffer::new);
-
-        if backbuffer.surface.is_none() {
-            let (width, height) = window.get_size();
-            let surface = device.get_instance().create_surface(window.get_handle())?;
-            let mut config = match surface.get_default_config(device.get_adapter(), width, height) {
-                Some(config) => config,
-                None => return Err(Error::new("backbuffer surface is not supported")),
-            };
-
-            config.format = wgpu::TextureFormat::Bgra8Unorm; // todo.
-
-            surface.configure(device.get_device(), &config);
-            backbuffer.surface = Some(surface);
-            backbuffer.config = Some(config);
+        if let Some(surface_texture) = window_surfaces
+            .get_mut(&window.get_id())
+            .and_then(|ws| ws.surface_texture.take())
+        {
+            window.present(surface_texture);
         }
-
-        // todo: Could handle surface resized here too.
-
-        // create surface texture and surface view.
-        let config = backbuffer.config.as_ref().unwrap();
-        let surface_texture = backbuffer.surface.as_ref().unwrap().get_current_texture()?;
-        let view = surface_texture
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor {
-                label: window.get_name(),
-                format: Some(config.format),
-                dimension: Some(wgpu::TextureViewDimension::D2),
-                aspect: wgpu::TextureAspect::All,
-                base_mip_level: 0,
-                mip_level_count: None,
-                base_array_layer: 0,
-                array_layer_count: None,
-            });
-
-        // todo: surface texture no longer needs to go in window.
-        window.set_surface_texture(surface_texture);
-        surface_texture_views.insert(window.get_id(), view);
     }
 
-    println!("prepare done");
+    // Signal the main thread that rendering is complete.
+    ready_semaphore.store(true, Ordering::Relaxed);
 
     Ok(())
 }

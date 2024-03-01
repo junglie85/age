@@ -2,18 +2,18 @@ use std::process::ExitCode;
 
 pub use app::*;
 pub use color::*;
-pub use device::{
+pub use error::Error;
+pub use renderer::{
     PipelineLayoutDesc, RenderDevice, RenderPipeline, RenderPipelineDesc, RenderProxy, ShaderDesc,
     TextureFormat,
 };
-pub use error::Error;
 
 mod app;
 mod color;
-mod device;
 mod error;
 pub mod math;
-mod sys;
+mod os;
+mod renderer;
 pub mod util;
 
 pub fn run<G: Game>() -> ExitCode {

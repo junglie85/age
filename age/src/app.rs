@@ -1,7 +1,7 @@
 use crate::{
-    device::{start_render_thread, RenderDevice, RenderProxy},
     error::Error,
-    sys::{Event, EventLoop, Window},
+    os::{Event, EventLoop, Window},
+    renderer::{start_render_thread, RenderDevice, RenderProxy},
     Game,
 };
 

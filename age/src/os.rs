@@ -1,11 +1,8 @@
-use std::{
-    ops::Deref,
-    sync::{Arc, Mutex},
-};
+use std::{ops::Deref, sync::Arc};
 
 use winit::{dpi::LogicalSize, event_loop::ControlFlow};
 
-use crate::error::Error;
+use crate::{error::Error, renderer::SurfaceTexture};
 
 pub(crate) struct EventLoop {
     el: Option<winit::event_loop::EventLoop<()>>,
@@ -80,7 +77,6 @@ pub struct WindowId(winit::window::WindowId);
 #[derive(Clone)]
 pub struct Window {
     w: Arc<winit::window::Window>,
-    surface_texture: Arc<Mutex<Option<wgpu::SurfaceTexture>>>,
 }
 
 impl Window {
@@ -91,10 +87,7 @@ impl Window {
             .with_inner_size(size)
             .with_visible(false)
             .build(el)?;
-        Ok(Window {
-            w: Arc::new(w),
-            surface_texture: Arc::new(Mutex::new(None)),
-        })
+        Ok(Window { w: Arc::new(w) })
     }
 
     pub(crate) fn get_handle(&self) -> WindowHandle {
@@ -113,29 +106,10 @@ impl Window {
         self.w.inner_size().into()
     }
 
-    pub(crate) fn present(&self) {
-        let mut surface_texture = self
-            .surface_texture
-            .lock()
-            .expect("failed to acquire lock on surface texture");
-
-        assert!(
-            surface_texture.is_some(),
-            "surface texture has not been set"
-        );
-
+    pub(crate) fn present(&self, surface_texture: SurfaceTexture) {
         self.w.pre_present_notify();
-        surface_texture.take().unwrap().present();
+        surface_texture.present();
         self.w.request_redraw();
-    }
-
-    pub(crate) fn set_surface_texture(&self, texture: wgpu::SurfaceTexture) {
-        let mut surface_texture = self
-            .surface_texture
-            .lock()
-            .expect("failed to acquire lock on surface texture");
-
-        *surface_texture = Some(texture);
     }
 
     pub fn set_visible(&self, visible: bool) {

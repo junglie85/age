@@ -1,4 +1,10 @@
-use std::{ops::Deref, sync::Arc};
+use std::{
+    ops::Deref,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
+};
 
 use winit::{dpi::LogicalSize, event_loop::ControlFlow};
 
@@ -77,6 +83,13 @@ pub struct WindowId(winit::window::WindowId);
 #[derive(Clone)]
 pub struct Window {
     w: Arc<winit::window::Window>,
+    state: Arc<Mutex<WindowState>>,
+    state_changed: Arc<AtomicBool>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct WindowState {
+    pub(crate) vsync: bool,
 }
 
 impl Window {
@@ -87,7 +100,14 @@ impl Window {
             .with_inner_size(size)
             .with_visible(false)
             .build(el)?;
-        Ok(Window { w: Arc::new(w) })
+
+        let state = WindowState { vsync: true };
+
+        Ok(Window {
+            w: Arc::new(w),
+            state: Arc::new(Mutex::new(state)),
+            state_changed: Arc::new(AtomicBool::new(true)),
+        })
     }
 
     pub fn get_id(&self) -> WindowId {
@@ -110,6 +130,33 @@ impl Window {
 
     pub fn set_visible(&self, visible: bool) {
         self.w.set_visible(visible);
+    }
+
+    pub fn set_vsync(&self, enabled: bool) {
+        let mut state = self
+            .state
+            .lock()
+            .expect("failed to acquire lock on window state");
+        if state.vsync != enabled {
+            state.vsync = enabled;
+            self.state_changed
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
+    pub(crate) fn has_state_changed(&self) -> bool {
+        matches!(
+            self.state_changed
+                .compare_exchange(true, false, Ordering::Relaxed, Ordering::Relaxed),
+            Ok(true)
+        )
+    }
+
+    pub(crate) fn get_state(&self) -> WindowState {
+        *self
+            .state
+            .lock()
+            .expect("failed to acquire lock on window state")
     }
 }
 

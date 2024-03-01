@@ -578,15 +578,22 @@ fn handle_execute(
             window_surface.config = Some(config);
         }
 
-        // todo: We could handle changing present mode or surface format here too...
         let config = window_surface.config.as_mut().unwrap();
         let (width, height) = window.get_size();
         let surface_resized = config.width != width || config.height != height;
 
-        if new_surface || surface_resized {
+        let window_state_changed = window.has_state_changed();
+
+        if new_surface || surface_resized || window_state_changed {
+            let state = window.get_state();
+
             config.width = width;
             config.height = height;
             config.format = wgpu::TextureFormat::Bgra8Unorm; // todo.
+            config.present_mode = match state.vsync {
+                true => wgpu::PresentMode::Fifo,
+                false => wgpu::PresentMode::Immediate,
+            };
 
             let surface = window_surface.surface.as_ref().unwrap();
             surface.configure(device.get_device(), config);

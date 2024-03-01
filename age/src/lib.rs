@@ -2,7 +2,10 @@ use std::process::ExitCode;
 
 pub use app::*;
 pub use color::*;
-pub use device::{RenderDevice, RenderProxy};
+pub use device::{
+    PipelineLayoutDesc, RenderDevice, RenderPipeline, RenderPipelineDesc, RenderProxy, ShaderDesc,
+    TextureFormat,
+};
 pub use error::Error;
 
 mod app;

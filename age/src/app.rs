@@ -11,7 +11,7 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
 
     let el = EventLoop::init()?;
     let window = Window::init(width, height, &el)?;
-    let device = RenderDevice::init()?;
+    let device = RenderDevice::init(&window)?;
 
     let (render_thread, render_proxy) = start_render_thread(device.clone())?;
 
@@ -64,9 +64,7 @@ impl App {
 
     fn post_update(&mut self) -> Result<(), Error> {
         self.proxy.sync();
-        self.device.prepare_window(&mut self.window)?;
-        self.proxy.submit(&self.window);
-        self.window.present();
+        self.proxy.execute();
 
         Ok(())
     }

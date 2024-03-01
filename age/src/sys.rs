@@ -1,4 +1,7 @@
-use std::{ops::Deref, sync::Arc};
+use std::{
+    ops::Deref,
+    sync::{Arc, Mutex},
+};
 
 use winit::{dpi::LogicalSize, event_loop::ControlFlow};
 
@@ -74,10 +77,10 @@ impl Platform {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WindowId(winit::window::WindowId);
 
+#[derive(Clone)]
 pub struct Window {
     w: Arc<winit::window::Window>,
-    surface_texture: Option<wgpu::SurfaceTexture>,
-    surface_texture_view: Option<wgpu::TextureView>,
+    surface_texture: Arc<Mutex<Option<wgpu::SurfaceTexture>>>,
 }
 
 impl Window {
@@ -90,8 +93,7 @@ impl Window {
             .build(el)?;
         Ok(Window {
             w: Arc::new(w),
-            surface_texture: None,
-            surface_texture_view: None,
+            surface_texture: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -111,32 +113,29 @@ impl Window {
         self.w.inner_size().into()
     }
 
-    pub(crate) fn present(&mut self) {
+    pub(crate) fn present(&self) {
+        let mut surface_texture = self
+            .surface_texture
+            .lock()
+            .expect("failed to acquire lock on surface texture");
+
         assert!(
-            self.surface_texture.is_some(),
+            surface_texture.is_some(),
             "surface texture has not been set"
         );
 
         self.w.pre_present_notify();
-        self.surface_texture.take().unwrap().present();
-        self.surface_texture_view = None;
+        surface_texture.take().unwrap().present();
         self.w.request_redraw();
     }
 
-    pub(crate) fn set_surface_texture(&mut self, surface_texture: wgpu::SurfaceTexture) {
-        self.surface_texture = Some(surface_texture);
-    }
+    pub(crate) fn set_surface_texture(&self, texture: wgpu::SurfaceTexture) {
+        let mut surface_texture = self
+            .surface_texture
+            .lock()
+            .expect("failed to acquire lock on surface texture");
 
-    pub(crate) fn get_surface_texture_view(&self) -> &wgpu::TextureView {
-        assert!(
-            self.surface_texture_view.is_some(),
-            "surface texture view has not been set"
-        );
-        self.surface_texture_view.as_ref().unwrap()
-    }
-
-    pub(crate) fn set_surface_texture_view(&mut self, view: wgpu::TextureView) {
-        self.surface_texture_view = Some(view);
+        *surface_texture = Some(texture);
     }
 
     pub fn set_visible(&self, visible: bool) {

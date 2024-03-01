@@ -19,8 +19,10 @@ use crate::{
 pub struct RenderDevice {
     inner: Arc<RenderDeviceInner>,
     pool: Arc<Mutex<VecDeque<CommandBuffer>>>,
+    window: Window,
     backbuffers: Arc<Mutex<HashMap<WindowId, Backbuffer>>>,
     command_buffer: Arc<Mutex<Option<CommandBuffer>>>,
+    surface_texture_views: Arc<Mutex<HashMap<WindowId, Arc<wgpu::TextureView>>>>,
 }
 
 struct RenderDeviceInner {
@@ -33,7 +35,7 @@ struct RenderDeviceInner {
 impl RenderDevice {
     const INITIAL_POOL_SIZE: usize = 2;
 
-    pub(crate) fn init() -> Result<Self, Error> {
+    pub(crate) fn init(window: &Window) -> Result<Self, Error> {
         let flags = if cfg!(debug_assertions) {
             wgpu::InstanceFlags::DEBUG | wgpu::InstanceFlags::VALIDATION
         } else {
@@ -106,8 +108,10 @@ impl RenderDevice {
                 queue,
             }),
             pool: Arc::new(Mutex::new(pool)),
+            window: window.clone(),
             backbuffers: Arc::new(Mutex::new(HashMap::new())),
             command_buffer: Arc::new(Mutex::new(None)),
+            surface_texture_views: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -214,20 +218,25 @@ impl RenderDevice {
             .push_back(buf);
     }
 
-    pub(crate) fn prepare_window(&self, window: &mut Window) -> Result<(), Error> {
+    fn prepare_window(&self) -> Result<(), Error> {
+        println!("prepare window");
+
         let mut backbuffers = self
             .backbuffers
             .lock()
             .expect("failed to acquire lock on backbuffers");
 
         // create backbuffer if it does not yet exist.
+        // todo: make it just one backbuffer.
         let backbuffer = backbuffers
-            .entry(window.get_id())
+            .entry(self.window.get_id())
             .or_insert_with(Backbuffer::new);
 
         if backbuffer.surface.is_none() {
-            let (width, height) = window.get_size();
-            let surface = self.get_instance().create_surface(window.get_handle())?;
+            let (width, height) = self.window.get_size();
+            let surface = self
+                .get_instance()
+                .create_surface(self.window.get_handle())?;
             let mut config = match surface.get_default_config(self.get_adapter(), width, height) {
                 Some(config) => config,
                 None => return Err(Error::new("backbuffer surface is not supported")),
@@ -248,7 +257,7 @@ impl RenderDevice {
         let view = surface_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor {
-                label: window.get_name(),
+                label: self.window.get_name(),
                 format: Some(config.format),
                 dimension: Some(wgpu::TextureViewDimension::D2),
                 aspect: wgpu::TextureAspect::All,
@@ -258,8 +267,16 @@ impl RenderDevice {
                 array_layer_count: None,
             });
 
-        window.set_surface_texture(surface_texture);
-        window.set_surface_texture_view(view);
+        self.window.set_surface_texture(surface_texture);
+
+        let view = Arc::new(view);
+        let mut stv = self
+            .surface_texture_views
+            .lock()
+            .expect("failed to acquire lock on surface texture views");
+        stv.insert(self.window.get_id(), view.clone());
+
+        println!("prepare done");
 
         Ok(())
     }
@@ -467,7 +484,7 @@ impl TryFrom<wgpu::TextureFormat> for TextureFormat {
 
 enum RenderMessage {
     Enqueue(CommandBuffer),
-    Submit,
+    Execute,
 }
 
 #[derive(Clone)]
@@ -479,20 +496,37 @@ pub struct RenderProxy {
 
 impl RenderProxy {
     pub fn enqueue(&self, buf: CommandBuffer) {
-        todo!()
+        self.tx
+            .send(RenderMessage::Enqueue(buf))
+            .expect("unable to send enqueue message to render thread");
     }
 
-    pub fn submit(&self, window: &Window) {
-        // ideally we wouldn't need to pass window down, or the device needs to hold onto the window handle (which is really what we need as it has an arc of the winit window inside).
-        todo!()
+    pub fn execute(&self) {
+        println!("send execute");
+        self.tx
+            .send(RenderMessage::Execute)
+            .expect("unable to send execute message to render thread");
     }
 
     pub(crate) fn shutdown(&self, thread: JoinHandle<()>) {
-        todo!()
+        self.stop_semaphore.store(true, Ordering::Relaxed);
+        thread.join().expect("unable to join render thread");
     }
 
     pub(crate) fn sync(&self) {
-        todo!()
+        // wait until render thread sets the `ready_semaphore` to `true`.
+        while Err(false)
+            == self.ready_semaphore.compare_exchange(
+                true,
+                false,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            )
+        {
+            continue;
+        }
+
+        println!("sync done");
     }
 }
 
@@ -507,15 +541,12 @@ pub(crate) fn start_render_thread(
         stop_semaphore: Arc::new(AtomicBool::new(false)),
     };
 
+    let ready_semaphore = proxy.ready_semaphore.clone();
+    let stop_semaphore = proxy.stop_semaphore.clone();
     let thread = std::thread::Builder::new()
         .name("render thread".to_string())
         .spawn(|| {
-            if let Err(err) = render_thread_main(
-                device,
-                rx,
-                proxy.ready_semaphore.clone(),
-                proxy.stop_semaphore.clone(),
-            ) {
+            if let Err(err) = render_thread_main(device, rx, ready_semaphore, stop_semaphore) {
                 eprintln!("{err}");
             }
         })?;
@@ -535,7 +566,7 @@ fn render_thread_main(
         for message in rx.try_iter() {
             match message {
                 RenderMessage::Enqueue(buf) => handle_enqueue(buf, &device),
-                RenderMessage::Submit => handle_submit(&device),
+                RenderMessage::Execute => handle_execute(&device, &ready_semaphore)?,
             }
         }
     }
@@ -544,6 +575,7 @@ fn render_thread_main(
 }
 
 fn handle_enqueue(buf: CommandBuffer, device: &RenderDevice) {
+    println!("handle enqueue");
     // todo: command buffer doesn't need to be on the device anymore, it can be in the render thread outside the loop.
     let mut command_buffer = device
         .command_buffer
@@ -556,33 +588,34 @@ fn handle_enqueue(buf: CommandBuffer, device: &RenderDevice) {
     *command_buffer = Some(buf);
 }
 
-fn handle_submit(device: &RenderDevice) {
+fn handle_execute(device: &RenderDevice, ready_semaphore: &Arc<AtomicBool>) -> Result<(), Error> {
+    device.prepare_window()?;
+
     let Some(buf) = device
         .command_buffer
         .lock()
         .expect("failed to acquire lock on command buffer")
         .take()
     else {
-        return;
+        return Ok(());
     };
 
     let mut encoder = device
         .get_device()
         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("submit"),
+            label: Some("execute"),
         });
+
+    let mut stv = device
+        .surface_texture_views
+        .lock()
+        .expect("failed to acquire lock on surface texture views");
 
     for pass in buf.passes.iter() {
         let mut color_attachments = Vec::with_capacity(pass.target.color_targets.len());
         for (i, color_target) in pass.target.color_targets.iter().enumerate() {
             let view = match color_target {
-                ColorTarget::Backbuffer(window_id) => {
-                    if window.get_id() == *window_id {
-                        window.get_surface_texture_view()
-                    } else {
-                        panic!("window id does not match");
-                    }
-                }
+                ColorTarget::Backbuffer(window_id) => &stv[window_id],
             };
 
             let attachment = Some(wgpu::RenderPassColorAttachment {
@@ -615,5 +648,10 @@ fn handle_submit(device: &RenderDevice) {
     }
 
     device.get_queue().submit([encoder.finish()]);
+    // todo: sync before present... or move present to render thread...
+    device.window.present();
     device.return_command_buffer(buf);
+    ready_semaphore.store(true, Ordering::Relaxed);
+
+    Ok(())
 }

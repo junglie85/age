@@ -443,7 +443,7 @@ impl TryFrom<wgpu::TextureFormat> for TextureFormat {
 
 enum RenderMessage {
     Enqueue(CommandBuffer),
-    Execute,
+    Flush,
 }
 
 #[derive(Clone)]
@@ -460,11 +460,10 @@ impl RenderProxy {
             .expect("unable to send enqueue message to render thread");
     }
 
-    pub fn execute(&self) {
-        println!("send execute");
+    pub fn flush(&self) {
         self.tx
-            .send(RenderMessage::Execute)
-            .expect("unable to send execute message to render thread");
+            .send(RenderMessage::Flush)
+            .expect("unable to send flush message to render thread");
     }
 
     pub(crate) fn shutdown(&self, thread: JoinHandle<()>) {
@@ -472,7 +471,7 @@ impl RenderProxy {
         thread.join().expect("unable to join render thread");
     }
 
-    pub(crate) fn sync(&self) {
+    pub(crate) fn wait_sync(&self) {
         // wait until render thread sets the `ready_semaphore` to `true`.
         while Err(false)
             == self.ready_semaphore.compare_exchange(
@@ -484,8 +483,6 @@ impl RenderProxy {
         {
             continue;
         }
-
-        println!("sync done");
     }
 }
 
@@ -542,7 +539,7 @@ fn render_thread_main(
         for message in rx.try_iter() {
             match message {
                 RenderMessage::Enqueue(buf) => handle_enqueue(buf, &mut submitted_command_buffer),
-                RenderMessage::Execute => handle_execute(
+                RenderMessage::Flush => handle_flush(
                     &interface,
                     &device,
                     &windows,
@@ -558,15 +555,14 @@ fn render_thread_main(
 }
 
 fn handle_enqueue(buf: CommandBuffer, submitted_command_buffer: &mut Option<CommandBuffer>) {
-    println!("handle enqueue");
     if submitted_command_buffer.is_some() {
-        panic!("have not processed previous command buffer. there is either a problem with thread synchronisation or multiple buffers per frame needs to be supproted");
+        panic!("have not processed previous command buffer. there is either a problem with thread synchronisation or support for multiple buffers per frame needs to be implemented");
     }
 
     *submitted_command_buffer = Some(buf);
 }
 
-fn handle_execute(
+fn handle_flush(
     interface: &RenderInterface,
     device: &RenderDevice,
     windows: &HashMap<WindowId, Window>,
@@ -648,7 +644,7 @@ fn handle_execute(
     let mut encoder = device
         .get_device()
         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("execute"),
+            label: Some("flush"),
         });
 
     for pass in buf.passes.iter() {

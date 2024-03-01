@@ -67,8 +67,8 @@ impl App {
     }
 
     fn post_update(&mut self) -> Result<(), Error> {
-        self.proxy.sync();
-        self.proxy.execute();
+        self.proxy.wait_sync();
+        self.proxy.flush();
 
         Ok(())
     }

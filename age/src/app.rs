@@ -1,7 +1,7 @@
 use crate::{
     error::Error,
     os::{Event, EventLoop, Window},
-    renderer::{start_render_thread, RenderDevice, RenderProxy},
+    renderer::{start_render_thread, RenderDevice, RenderInterface, RenderProxy},
     Game,
 };
 
@@ -12,12 +12,15 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
     let el = EventLoop::init()?;
     let window = Window::init(width, height, &el)?;
     let device = RenderDevice::init()?;
+    let interface = RenderInterface::init();
 
-    let (render_thread, render_proxy) = start_render_thread(window.clone(), device.clone())?;
+    let (render_thread, render_proxy) =
+        start_render_thread(window.clone(), device.clone(), interface.clone())?;
 
     let mut app = App {
         window,
         device,
+        interface,
         proxy: render_proxy.clone(),
         exit: false,
     };
@@ -53,6 +56,7 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
 pub struct App {
     pub window: Window,
     pub device: RenderDevice,
+    pub interface: RenderInterface,
     pub proxy: RenderProxy,
     exit: bool,
 }

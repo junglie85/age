@@ -16,9 +16,52 @@ use crate::{
 };
 
 #[derive(Clone)]
+
+pub struct RenderInterface {
+    pool: Arc<Mutex<VecDeque<CommandBuffer>>>,
+}
+
+impl RenderInterface {
+    const INITIAL_POOL_SIZE: usize = 2;
+
+    pub(crate) fn init() -> Self {
+        let mut pool = VecDeque::new();
+        for _ in 0..Self::INITIAL_POOL_SIZE {
+            pool.push_back(CommandBuffer::new());
+        }
+
+        Self {
+            pool: Arc::new(Mutex::new(pool)),
+        }
+    }
+
+    pub fn get_command_buffer(&self) -> CommandBuffer {
+        match self
+            .pool
+            .lock()
+            .expect("failed to acquire lock on command buffer pool")
+            .pop_front()
+        {
+            Some(buf) => buf,
+            None => {
+                println!("no buffers in pool, creating new command buffer");
+                CommandBuffer::new()
+            }
+        }
+    }
+
+    fn return_command_buffer(&self, mut buf: CommandBuffer) {
+        buf.reset();
+        self.pool
+            .lock()
+            .expect("failed to acquire lock on command buffer pool")
+            .push_back(buf);
+    }
+}
+
+#[derive(Clone)]
 pub struct RenderDevice {
     inner: Arc<RenderDeviceInner>,
-    pool: Arc<Mutex<VecDeque<CommandBuffer>>>,
 }
 
 struct RenderDeviceInner {
@@ -29,8 +72,6 @@ struct RenderDeviceInner {
 }
 
 impl RenderDevice {
-    const INITIAL_POOL_SIZE: usize = 2;
-
     pub(crate) fn init() -> Result<Self, Error> {
         let flags = if cfg!(debug_assertions) {
             wgpu::InstanceFlags::DEBUG | wgpu::InstanceFlags::VALIDATION
@@ -91,11 +132,6 @@ impl RenderDevice {
             }
         };
 
-        let mut pool = VecDeque::new();
-        for _ in 0..Self::INITIAL_POOL_SIZE {
-            pool.push_back(CommandBuffer::new());
-        }
-
         Ok(Self {
             inner: Arc::new(RenderDeviceInner {
                 instance,
@@ -103,7 +139,6 @@ impl RenderDevice {
                 device,
                 queue,
             }),
-            pool: Arc::new(Mutex::new(pool)),
         })
     }
 
@@ -185,29 +220,6 @@ impl RenderDevice {
             });
 
         Shader { shader }
-    }
-
-    pub fn get_command_buffer(&self) -> CommandBuffer {
-        match self
-            .pool
-            .lock()
-            .expect("failed to acquire lock on command buffer pool")
-            .pop_front()
-        {
-            Some(buf) => buf,
-            None => {
-                println!("no buffers in pool, creating new command buffer");
-                CommandBuffer::new()
-            }
-        }
-    }
-
-    fn return_command_buffer(&self, mut buf: CommandBuffer) {
-        buf.reset();
-        self.pool
-            .lock()
-            .expect("failed to acquire lock on command buffer pool")
-            .push_back(buf);
     }
 }
 
@@ -480,6 +492,7 @@ impl RenderProxy {
 pub(crate) fn start_render_thread(
     window: Window,
     device: RenderDevice,
+    interface: RenderInterface,
 ) -> Result<(JoinHandle<()>, RenderProxy), Error> {
     let (tx, rx) = std::sync::mpsc::channel();
 
@@ -494,9 +507,14 @@ pub(crate) fn start_render_thread(
     let thread = std::thread::Builder::new()
         .name("render thread".to_string())
         .spawn(|| {
-            if let Err(err) =
-                render_thread_main(window, device, rx, ready_semaphore, stop_semaphore)
-            {
+            if let Err(err) = render_thread_main(
+                window,
+                interface,
+                device,
+                rx,
+                ready_semaphore,
+                stop_semaphore,
+            ) {
                 eprintln!("{err}");
             }
         })?;
@@ -506,6 +524,7 @@ pub(crate) fn start_render_thread(
 
 fn render_thread_main(
     window: Window,
+    interface: RenderInterface,
     device: RenderDevice,
     rx: Receiver<RenderMessage>,
     ready_semaphore: Arc<AtomicBool>,
@@ -524,6 +543,7 @@ fn render_thread_main(
             match message {
                 RenderMessage::Enqueue(buf) => handle_enqueue(buf, &mut submitted_command_buffer),
                 RenderMessage::Execute => handle_execute(
+                    &interface,
                     &device,
                     &windows,
                     &mut window_surfaces,
@@ -547,6 +567,7 @@ fn handle_enqueue(buf: CommandBuffer, submitted_command_buffer: &mut Option<Comm
 }
 
 fn handle_execute(
+    interface: &RenderInterface,
     device: &RenderDevice,
     windows: &HashMap<WindowId, Window>,
     window_surfaces: &mut HashMap<WindowId, WindowSurface>,
@@ -670,7 +691,7 @@ fn handle_execute(
     }
 
     device.get_queue().submit([encoder.finish()]);
-    device.return_command_buffer(buf);
+    interface.return_command_buffer(buf);
 
     // Present the surface textures for each window.
     for window in windows.values() {

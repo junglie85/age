@@ -21,7 +21,6 @@ pub struct RenderDevice {
     pool: Arc<Mutex<VecDeque<CommandBuffer>>>,
     window: Window,
     backbuffers: Arc<Mutex<HashMap<WindowId, Backbuffer>>>,
-    command_buffer: Arc<Mutex<Option<CommandBuffer>>>,
     surface_texture_views: Arc<Mutex<HashMap<WindowId, Arc<wgpu::TextureView>>>>,
 }
 
@@ -110,7 +109,6 @@ impl RenderDevice {
             pool: Arc::new(Mutex::new(pool)),
             window: window.clone(),
             backbuffers: Arc::new(Mutex::new(HashMap::new())),
-            command_buffer: Arc::new(Mutex::new(None)),
             surface_texture_views: Arc::new(Mutex::new(HashMap::new())),
         })
     }
@@ -560,13 +558,17 @@ fn render_thread_main(
     ready_semaphore: Arc<AtomicBool>,
     stop_semaphore: Arc<AtomicBool>,
 ) -> Result<(), Error> {
+    let mut submitted_command_buffer: Option<CommandBuffer> = None;
+
     ready_semaphore.store(true, Ordering::Relaxed);
 
     while !stop_semaphore.load(Ordering::Relaxed) {
         for message in rx.try_iter() {
             match message {
-                RenderMessage::Enqueue(buf) => handle_enqueue(buf, &device),
-                RenderMessage::Execute => handle_execute(&device, &ready_semaphore)?,
+                RenderMessage::Enqueue(buf) => handle_enqueue(buf, &mut submitted_command_buffer),
+                RenderMessage::Execute => {
+                    handle_execute(&mut submitted_command_buffer, &device, &ready_semaphore)?
+                }
             }
         }
     }
@@ -574,29 +576,23 @@ fn render_thread_main(
     Ok(())
 }
 
-fn handle_enqueue(buf: CommandBuffer, device: &RenderDevice) {
+fn handle_enqueue(buf: CommandBuffer, submitted_command_buffer: &mut Option<CommandBuffer>) {
     println!("handle enqueue");
-    // todo: command buffer doesn't need to be on the device anymore, it can be in the render thread outside the loop.
-    let mut command_buffer = device
-        .command_buffer
-        .lock()
-        .expect("failed to acquire lock on command buffer");
-    if command_buffer.is_some() {
+    if submitted_command_buffer.is_some() {
         panic!("have not processed previous command buffer. there is either a problem with thread synchronisation or multiple buffers per frame needs to be supproted");
     }
 
-    *command_buffer = Some(buf);
+    *submitted_command_buffer = Some(buf);
 }
 
-fn handle_execute(device: &RenderDevice, ready_semaphore: &Arc<AtomicBool>) -> Result<(), Error> {
+fn handle_execute(
+    submitted_commad_buffer: &mut Option<CommandBuffer>,
+    device: &RenderDevice,
+    ready_semaphore: &Arc<AtomicBool>,
+) -> Result<(), Error> {
     device.prepare_window()?;
 
-    let Some(buf) = device
-        .command_buffer
-        .lock()
-        .expect("failed to acquire lock on command buffer")
-        .take()
-    else {
+    let Some(buf) = submitted_commad_buffer.take() else {
         return Ok(());
     };
 

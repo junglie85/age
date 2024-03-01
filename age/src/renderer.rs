@@ -568,7 +568,7 @@ fn handle_execute(
         let new_surface = window_surface.surface.is_none();
         if new_surface {
             let (width, height) = window.get_size();
-            let surface = device.get_instance().create_surface(window.get_handle())?;
+            let surface = device.get_instance().create_surface(window.clone())?;
             let config = match surface.get_default_config(device.get_adapter(), width, height) {
                 Some(config) => config,
                 None => return Err(Error::new("window surface is not supported")),

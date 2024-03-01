@@ -90,10 +90,6 @@ impl Window {
         Ok(Window { w: Arc::new(w) })
     }
 
-    pub(crate) fn get_handle(&self) -> WindowHandle {
-        WindowHandle { w: self.w.clone() }
-    }
-
     pub fn get_id(&self) -> WindowId {
         WindowId(self.w.id())
     }
@@ -117,11 +113,7 @@ impl Window {
     }
 }
 
-pub struct WindowHandle {
-    w: Arc<winit::window::Window>,
-}
-
-impl raw_window_handle::HasDisplayHandle for WindowHandle {
+impl raw_window_handle::HasDisplayHandle for Window {
     fn display_handle(
         &self,
     ) -> Result<raw_window_handle::DisplayHandle<'_>, raw_window_handle::HandleError> {
@@ -129,7 +121,7 @@ impl raw_window_handle::HasDisplayHandle for WindowHandle {
     }
 }
 
-impl raw_window_handle::HasWindowHandle for WindowHandle {
+impl raw_window_handle::HasWindowHandle for Window {
     fn window_handle(
         &self,
     ) -> Result<raw_window_handle::WindowHandle<'_>, raw_window_handle::HandleError> {

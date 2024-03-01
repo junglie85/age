@@ -11,9 +11,9 @@ pub(crate) fn run<G: Game>() -> Result<(), Error> {
 
     let el = EventLoop::init()?;
     let window = Window::init(width, height, &el)?;
-    let device = RenderDevice::init(&window)?;
+    let device = RenderDevice::init()?;
 
-    let (render_thread, render_proxy) = start_render_thread(device.clone())?;
+    let (render_thread, render_proxy) = start_render_thread(window.clone(), device.clone())?;
 
     let mut app = App {
         window,

@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    collections::{HashMap, VecDeque},
+    collections::VecDeque,
     ops::{Deref, Range},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -527,11 +527,8 @@ fn render_thread_main(
     ready_semaphore: Arc<AtomicBool>,
     stop_semaphore: Arc<AtomicBool>,
 ) -> Result<(), Error> {
-    let mut windows: HashMap<WindowId, Window> = HashMap::new();
-    let mut window_surfaces: HashMap<WindowId, WindowSurface> = HashMap::new();
+    let mut window_surface = WindowSurface::new();
     let mut submitted_command_buffer: Option<CommandBuffer> = None;
-
-    windows.insert(window.get_id(), window);
 
     ready_semaphore.store(true, Ordering::Relaxed);
 
@@ -542,8 +539,8 @@ fn render_thread_main(
                 RenderMessage::Flush => handle_flush(
                     &interface,
                     &device,
-                    &windows,
-                    &mut window_surfaces,
+                    &window,
+                    &mut window_surface,
                     &mut submitted_command_buffer,
                     &ready_semaphore,
                 )?,
@@ -565,8 +562,8 @@ fn handle_enqueue(buf: CommandBuffer, submitted_command_buffer: &mut Option<Comm
 fn handle_flush(
     interface: &RenderInterface,
     device: &RenderDevice,
-    windows: &HashMap<WindowId, Window>,
-    window_surfaces: &mut HashMap<WindowId, WindowSurface>,
+    window: &Window,
+    window_surface: &mut WindowSurface,
     submitted_command_buffer: &mut Option<CommandBuffer>,
     ready_semaphore: &Arc<AtomicBool>,
 ) -> Result<(), Error> {
@@ -575,70 +572,64 @@ fn handle_flush(
         return Ok(());
     };
 
-    // Prepare window surfaces for rendering.
-    for window in windows.values() {
-        // create window surface if it does not yet exist.
-        let window_surface = window_surfaces
-            .entry(window.get_id())
-            .or_insert_with(WindowSurface::new);
-
-        let new_surface = window_surface.surface.is_none();
-        if new_surface {
-            let (width, height) = window.get_size();
-            let surface = device.get_instance().create_surface(window.clone())?;
-            let config = match surface.get_default_config(device.get_adapter(), width, height) {
-                Some(config) => config,
-                None => return Err(Error::new("window surface is not supported")),
-            };
-
-            window_surface.surface = Some(surface);
-            window_surface.config = Some(config);
-        }
-
-        let config = window_surface.config.as_mut().unwrap();
+    let new_surface = window_surface.surface.is_none();
+    if new_surface {
         let (width, height) = window.get_size();
-        let surface_resized = config.width != width || config.height != height;
+        let surface = device.get_instance().create_surface(window.clone())?;
+        let config = match surface.get_default_config(device.get_adapter(), width, height) {
+            Some(config) => config,
+            None => return Err(Error::new("window surface is not supported")),
+        };
 
-        let window_state_changed = window.has_state_changed();
-
-        if new_surface || surface_resized || window_state_changed {
-            let state = window.get_state();
-
-            config.width = width;
-            config.height = height;
-            config.format = wgpu::TextureFormat::Bgra8Unorm; // todo.
-            config.present_mode = match state.vsync {
-                true => wgpu::PresentMode::Fifo,
-                false => wgpu::PresentMode::Immediate,
-            };
-
-            let surface = window_surface.surface.as_ref().unwrap();
-            surface.configure(device.get_device(), config);
-        }
-
-        // create surface texture and surface view.
-        let config = window_surface.config.as_ref().unwrap();
-        let surface_texture = window_surface
-            .surface
-            .as_ref()
-            .unwrap()
-            .get_current_texture()?;
-        let view = surface_texture
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor {
-                label: window.get_name(),
-                format: Some(config.format),
-                dimension: Some(wgpu::TextureViewDimension::D2),
-                aspect: wgpu::TextureAspect::All,
-                base_mip_level: 0,
-                mip_level_count: None,
-                base_array_layer: 0,
-                array_layer_count: None,
-            });
-
-        window_surface.surface_texture = Some(surface_texture.into());
-        window_surface.surface_texture_view = Some(view);
+        window_surface.surface = Some(surface);
+        window_surface.config = Some(config);
     }
+
+    let config = window_surface.config.as_mut().unwrap();
+    let (width, height) = window.get_size();
+    let surface_resized = config.width != width || config.height != height;
+
+    let window_state_changed = window.has_state_changed();
+
+    if new_surface || surface_resized || window_state_changed {
+        let state = window.get_state();
+
+        // If width and height are 0, we get an error. Could just not render because it probably means the
+        // window is minimised.
+        config.width = if width > 0 { width } else { 1 };
+        config.height = if height > 0 { height } else { 1 };
+        config.format = wgpu::TextureFormat::Bgra8Unorm; // todo.
+        config.present_mode = match state.vsync {
+            true => wgpu::PresentMode::Fifo,
+            false => wgpu::PresentMode::Immediate,
+        };
+
+        let surface = window_surface.surface.as_ref().unwrap();
+        surface.configure(device.get_device(), config);
+    }
+
+    // create surface texture and surface view.
+    let config = window_surface.config.as_ref().unwrap();
+    let surface_texture = window_surface
+        .surface
+        .as_ref()
+        .unwrap()
+        .get_current_texture()?;
+    let view = surface_texture
+        .texture
+        .create_view(&wgpu::TextureViewDescriptor {
+            label: window.get_name(),
+            format: Some(config.format),
+            dimension: Some(wgpu::TextureViewDimension::D2),
+            aspect: wgpu::TextureAspect::All,
+            base_mip_level: 0,
+            mip_level_count: None,
+            base_array_layer: 0,
+            array_layer_count: None,
+        });
+
+    window_surface.surface_texture = Some(surface_texture.into());
+    window_surface.surface_texture_view = Some(view);
 
     // Do rendering.
     let mut encoder = device
@@ -651,10 +642,9 @@ fn handle_flush(
         let mut color_attachments = Vec::with_capacity(pass.target.color_targets.len());
         for (i, color_target) in pass.target.color_targets.iter().enumerate() {
             let view = match color_target {
-                ColorTarget::WindowSurface(window_id) => window_surfaces[window_id]
-                    .surface_texture_view
-                    .as_ref()
-                    .unwrap(),
+                ColorTarget::WindowSurface(_window_id) => {
+                    window_surface.surface_texture_view.as_ref().unwrap()
+                }
             };
 
             let attachment = Some(wgpu::RenderPassColorAttachment {
@@ -689,14 +679,8 @@ fn handle_flush(
     device.get_queue().submit([encoder.finish()]);
     interface.return_command_buffer(buf);
 
-    // Present the surface textures for each window.
-    for window in windows.values() {
-        if let Some(surface_texture) = window_surfaces
-            .get_mut(&window.get_id())
-            .and_then(|ws| ws.surface_texture.take())
-        {
-            window.present(surface_texture);
-        }
+    if let Some(surface_texture) = window_surface.surface_texture.take() {
+        window.present(surface_texture);
     }
 
     // Signal the main thread that rendering is complete.

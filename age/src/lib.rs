@@ -34,4 +34,6 @@ pub trait Game<T = Self> {
     fn on_exit_requested(&mut self, app: &mut App) {
         app.exit();
     }
+
+    fn on_window_resized(&mut self, _app: &mut App, _width: u32, _height: u32) {}
 }

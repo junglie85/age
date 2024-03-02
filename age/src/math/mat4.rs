@@ -61,7 +61,7 @@ impl Mat4 {
 
     #[inline(always)]
     #[rustfmt::skip]
-    pub fn ortho(width: f32, height: f32, near: f32, far: f32) -> Self {
+    pub fn ortho(left: f32, right: f32, bottom: f32, top: f32, near: f32, far: f32) -> Self {
         // This is a right handed projection based on
         // http://learnwebgl.brown37.net/08_projections/projections_ortho.html#the-orthographic-projection-matrix
         // but for wgpu we need to restrict the depth range to 0 to 1 rather than -1 to 1 which is used
@@ -69,11 +69,6 @@ impl Mat4 {
         // `GLM_FORCE_DEPTH_ZERO_TO_ONE` to enable this range; glam has a separate function for
         // calculating the orthographic matrix depending on depth range (see `Mat4::orthographic_rh` and
         // `Mat4::orthographic_rh_gl`).
-
-        let left = 0.0;
-        let right = width;
-        let bottom = height;
-        let top = 0.0;
 
         let a = 2.0 / (right - left);
         let b = 2.0 / (top - bottom);

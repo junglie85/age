@@ -1,6 +1,7 @@
 use std::{
     borrow::Cow,
     collections::VecDeque,
+    num::NonZeroU64,
     ops::{Deref, Range},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -158,12 +159,93 @@ impl RenderDevice {
         &self.inner.queue
     }
 
+    pub fn create_bind_group(&self, desc: &BindGroupDesc) -> BindGroup {
+        let entries = desc
+            .entries
+            .iter()
+            .enumerate()
+            .map(|(binding, entry)| wgpu::BindGroupEntry {
+                binding: binding as u32,
+                resource: match *entry {
+                    BindingResource::Buffer(buffer) => {
+                        wgpu::BindingResource::Buffer(buffer.buffer.as_entire_buffer_binding())
+                    }
+                },
+            })
+            .collect::<Vec<_>>();
+
+        let bg = self
+            .get_device()
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: desc.label,
+                layout: &desc.layout.bgl,
+                entries: &entries,
+            });
+
+        BindGroup { bg: Arc::new(bg) }
+    }
+
+    pub fn create_bind_group_layout(&self, desc: &BindGroupLayoutDesc) -> BindGroupLayout {
+        let entries = desc
+            .entries
+            .iter()
+            .enumerate()
+            .map(|(binding, entry)| wgpu::BindGroupLayoutEntry {
+                binding: binding as u32,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                ty: match *entry {
+                    BindingType::Storage {
+                        read_only,
+                        min_size,
+                    } => wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only },
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(min_size as u64),
+                    },
+                },
+                count: None,
+            })
+            .collect::<Vec<_>>();
+
+        let bgl = self
+            .get_device()
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: desc.label,
+                entries: &entries,
+            });
+
+        BindGroupLayout { bgl: Arc::new(bgl) }
+    }
+
+    pub fn create_buffer(&self, desc: &BufferDesc) -> Buffer {
+        let usage = match desc.ty {
+            BufferType::Storage => wgpu::BufferUsages::STORAGE,
+        };
+
+        let buffer = self.get_device().create_buffer(&wgpu::BufferDescriptor {
+            label: desc.label,
+            size: desc.size as u64,
+            usage: wgpu::BufferUsages::COPY_DST | usage,
+            mapped_at_creation: false,
+        });
+
+        Buffer {
+            buffer: Arc::new(buffer),
+        }
+    }
+
     pub fn create_pipeline_layout(&self, desc: &PipelineLayoutDesc) -> PipelineLayout {
+        let bgl = desc
+            .bind_group_layouts
+            .iter()
+            .map(|bgl| &*bgl.bgl) // Reference to Deref Arc.
+            .collect::<Vec<_>>();
+
         let layout = self
             .get_device()
             .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: desc.label,
-                bind_group_layouts: &[],
+                bind_group_layouts: &bgl,
                 push_constant_ranges: &[],
             });
 
@@ -221,6 +303,26 @@ impl RenderDevice {
 
         Shader { shader }
     }
+
+    pub fn write_buffer<T: Copy>(&self, buffer: &Buffer, data: &[T]) {
+        let bytes = cast_slice(data);
+        let Some(size) = NonZeroU64::new(bytes.len() as u64) else {
+            eprintln!("attempted to write 0 bytes to buffer");
+            return;
+        };
+
+        if let Some(mut w) = self.get_queue().write_buffer_with(&buffer.buffer, 0, size) {
+            w.copy_from_slice(bytes);
+        } else {
+            eprintln!("attempted to write more bytes to buffer than there is capacity");
+        }
+    }
+}
+
+fn cast_slice<T: Copy>(s: &[T]) -> &[u8] {
+    let len = std::mem::size_of_val(s);
+    let data = s.as_ptr() as *const u8;
+    unsafe { std::slice::from_raw_parts(data, len) }
 }
 
 impl From<wgpu::CreateSurfaceError> for Error {
@@ -270,14 +372,18 @@ impl From<wgpu::SurfaceTexture> for SurfaceTexture {
 #[derive(Default)]
 pub struct CommandBuffer {
     render_pipeline: Option<RenderPipeline>,
+    bind_groups: [Option<BindGroup>; Self::MAX_BIND_GROUPS],
     passes: Vec<RenderPass>,
     draws: Vec<DrawCommand>,
 }
 
 impl CommandBuffer {
+    const MAX_BIND_GROUPS: usize = 2;
+
     fn new() -> Self {
         Self {
             render_pipeline: None,
+            bind_groups: Self::zero_bind_groups(),
             passes: Vec::new(),
             draws: Vec::new(),
         }
@@ -309,17 +415,28 @@ impl CommandBuffer {
             pipeline: self.render_pipeline.as_ref().unwrap().clone(),
             vertices: vertices.start as u32..vertices.end as u32,
             instances: instances.start as u32..instances.end as u32,
+            bind_groups: self.bind_groups.clone(),
         });
     }
 
     fn reset(&mut self) {
         self.render_pipeline = None;
+        self.bind_groups = Self::zero_bind_groups();
         self.passes.clear();
         self.draws.clear();
     }
 
+    pub fn set_bind_group(&mut self, index: usize, bind_group: &BindGroup) {
+        assert!(index < Self::MAX_BIND_GROUPS);
+        self.bind_groups[index] = Some(bind_group.clone());
+    }
+
     pub fn set_render_pipeline(&mut self, pipeline: &RenderPipeline) {
         self.render_pipeline = Some(pipeline.clone());
+    }
+
+    fn zero_bind_groups() -> [Option<BindGroup>; Self::MAX_BIND_GROUPS] {
+        [None, None]
     }
 }
 
@@ -333,6 +450,7 @@ struct DrawCommand {
     pipeline: RenderPipeline,
     vertices: Range<u32>,
     instances: Range<u32>,
+    bind_groups: [Option<BindGroup>; CommandBuffer::MAX_BIND_GROUPS],
 }
 
 // todo: draw target can have multiple color attachments. we want to be able to convert the following into a target:
@@ -359,8 +477,56 @@ impl From<&Window> for RenderTarget {
     }
 }
 
+pub struct BindGroupDesc<'desc> {
+    pub label: Option<&'desc str>,
+    pub layout: &'desc BindGroupLayout,
+    pub entries: &'desc [BindingResource<'desc>],
+}
+
+#[derive(Clone)]
+pub struct BindGroup {
+    bg: Arc<wgpu::BindGroup>,
+}
+
+#[derive(Clone, Copy)]
+pub enum BindingResource<'a> {
+    Buffer(&'a Buffer),
+}
+
+pub struct BindGroupLayoutDesc<'desc> {
+    pub label: Option<&'desc str>,
+    pub entries: &'desc [BindingType],
+}
+
+#[derive(Clone)]
+pub struct BindGroupLayout {
+    bgl: Arc<wgpu::BindGroupLayout>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum BindingType {
+    Storage { read_only: bool, min_size: usize },
+}
+
+pub struct BufferDesc<'desc> {
+    pub label: Option<&'desc str>,
+    pub size: usize,
+    pub ty: BufferType,
+}
+
+#[derive(Clone)]
+pub struct Buffer {
+    buffer: Arc<wgpu::Buffer>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum BufferType {
+    Storage,
+}
+
 pub struct PipelineLayoutDesc<'desc> {
     pub label: Option<&'desc str>,
+    pub bind_group_layouts: &'desc [&'desc BindGroupLayout],
 }
 
 pub struct PipelineLayout {
@@ -670,9 +836,21 @@ fn handle_flush(
             occlusion_query_set: None,
         });
 
-        for draw in &buf.draws[pass.draws.clone()] {
-            rpass.set_pipeline(&draw.pipeline);
-            rpass.draw(draw.vertices.clone(), draw.instances.clone())
+        for DrawCommand {
+            pipeline,
+            vertices,
+            instances,
+            bind_groups,
+        } in &buf.draws[pass.draws.clone()]
+        {
+            // todo: cache the set values and only reset if they change.
+            for (index, bg) in bind_groups.iter().enumerate() {
+                if let Some(bg) = bg {
+                    rpass.set_bind_group(index as u32, &bg.bg, &[]);
+                }
+            }
+            rpass.set_pipeline(pipeline);
+            rpass.draw(vertices.clone(), instances.clone())
         }
     }
 

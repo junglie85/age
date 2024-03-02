@@ -3,14 +3,17 @@ use std::process::ExitCode;
 pub use app::*;
 pub use color::*;
 pub use error::Error;
+pub use graphics::Camera;
 pub use renderer::{
-    PipelineLayoutDesc, RenderDevice, RenderPipeline, RenderPipelineDesc, RenderProxy, ShaderDesc,
-    TextureFormat,
+    BindGroup, BindGroupDesc, BindGroupLayout, BindGroupLayoutDesc, BindingResource, BindingType,
+    Buffer, BufferDesc, BufferType, PipelineLayoutDesc, RenderDevice, RenderPipeline,
+    RenderPipelineDesc, RenderProxy, ShaderDesc, TextureFormat,
 };
 
 mod app;
 mod color;
 mod error;
+mod graphics;
 pub mod math;
 mod os;
 mod renderer;

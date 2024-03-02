@@ -7,7 +7,8 @@ pub use graphics::Camera;
 pub use renderer::{
     BindGroup, BindGroupDesc, BindGroupLayout, BindGroupLayoutDesc, BindingResource, BindingType,
     Buffer, BufferDesc, BufferType, PipelineLayoutDesc, RenderDevice, RenderPipeline,
-    RenderPipelineDesc, RenderProxy, ShaderDesc, TextureFormat,
+    RenderPipelineDesc, RenderProxy, ShaderDesc, TextureFormat, VertexBufferLayout,
+    VertexBufferLayoutDesc, VertexFormat, VertexType,
 };
 
 mod app;

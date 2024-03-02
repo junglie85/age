@@ -220,6 +220,7 @@ impl RenderDevice {
     pub fn create_buffer(&self, desc: &BufferDesc) -> Buffer {
         let usage = match desc.ty {
             BufferType::Storage => wgpu::BufferUsages::STORAGE,
+            BufferType::Vertex => wgpu::BufferUsages::VERTEX,
         };
 
         let buffer = self.get_device().create_buffer(&wgpu::BufferDescriptor {
@@ -253,6 +254,16 @@ impl RenderDevice {
     }
 
     pub fn create_render_pipelne(&self, desc: &RenderPipelineDesc) -> RenderPipeline {
+        let buffers = desc
+            .buffers
+            .iter()
+            .map(|l| wgpu::VertexBufferLayout {
+                array_stride: l.array_stride,
+                step_mode: l.step_mode,
+                attributes: &l.attributes,
+            })
+            .collect::<Vec<_>>();
+
         let pipeline = self
             .get_device()
             .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -261,7 +272,7 @@ impl RenderDevice {
                 vertex: wgpu::VertexState {
                     module: desc.shader,
                     entry_point: desc.vs_main,
-                    buffers: &[],
+                    buffers: &buffers,
                 },
                 primitive: wgpu::PrimitiveState {
                     topology: wgpu::PrimitiveTopology::TriangleList, // could create a pipeline per combination of "features" ad formats?
@@ -373,17 +384,22 @@ impl From<wgpu::SurfaceTexture> for SurfaceTexture {
 pub struct CommandBuffer {
     render_pipeline: Option<RenderPipeline>,
     bind_groups: [Option<BindGroup>; Self::MAX_BIND_GROUPS],
+    vertex_buffers: [Option<Buffer>; Self::MAX_VERTEX_BUFFERS],
     passes: Vec<RenderPass>,
     draws: Vec<DrawCommand>,
 }
 
 impl CommandBuffer {
+    const NONE_BIND_GROUP: Option<BindGroup> = None;
+    const NONE_VERTEX_BUFFER: Option<Buffer> = None;
     const MAX_BIND_GROUPS: usize = 2;
+    const MAX_VERTEX_BUFFERS: usize = 2;
 
     fn new() -> Self {
         Self {
             render_pipeline: None,
-            bind_groups: Self::zero_bind_groups(),
+            bind_groups: [Self::NONE_BIND_GROUP; Self::MAX_BIND_GROUPS],
+            vertex_buffers: [Self::NONE_VERTEX_BUFFER; Self::MAX_VERTEX_BUFFERS],
             passes: Vec::new(),
             draws: Vec::new(),
         }
@@ -416,12 +432,14 @@ impl CommandBuffer {
             vertices: vertices.start as u32..vertices.end as u32,
             instances: instances.start as u32..instances.end as u32,
             bind_groups: self.bind_groups.clone(),
+            vertex_buffers: self.vertex_buffers.clone(),
         });
     }
 
     fn reset(&mut self) {
         self.render_pipeline = None;
-        self.bind_groups = Self::zero_bind_groups();
+        self.bind_groups = [Self::NONE_BIND_GROUP; Self::MAX_BIND_GROUPS];
+        self.vertex_buffers = [Self::NONE_VERTEX_BUFFER; Self::MAX_VERTEX_BUFFERS];
         self.passes.clear();
         self.draws.clear();
     }
@@ -435,8 +453,9 @@ impl CommandBuffer {
         self.render_pipeline = Some(pipeline.clone());
     }
 
-    fn zero_bind_groups() -> [Option<BindGroup>; Self::MAX_BIND_GROUPS] {
-        [None, None]
+    pub fn set_vertex_buffer(&mut self, slot: usize, buffer: &Buffer) {
+        assert!(slot < Self::MAX_VERTEX_BUFFERS);
+        self.vertex_buffers[slot] = Some(buffer.clone());
     }
 }
 
@@ -451,6 +470,7 @@ struct DrawCommand {
     vertices: Range<u32>,
     instances: Range<u32>,
     bind_groups: [Option<BindGroup>; CommandBuffer::MAX_BIND_GROUPS],
+    vertex_buffers: [Option<Buffer>; CommandBuffer::MAX_VERTEX_BUFFERS],
 }
 
 // todo: draw target can have multiple color attachments. we want to be able to convert the following into a target:
@@ -521,6 +541,7 @@ pub struct Buffer {
 
 #[derive(Debug, Clone, Copy)]
 pub enum BufferType {
+    Vertex,
     Storage,
 }
 
@@ -548,6 +569,7 @@ pub struct RenderPipelineDesc<'desc> {
     pub vs_main: &'desc str,
     pub fs_main: &'desc str,
     pub format: TextureFormat,
+    pub buffers: &'desc [VertexBufferLayout],
 }
 
 #[derive(Clone)]
@@ -603,6 +625,75 @@ impl TryFrom<wgpu::TextureFormat> for TextureFormat {
             wgpu::TextureFormat::Bgra8Unorm => Ok(TextureFormat::Bgra8Unorm),
             wgpu::TextureFormat::Rgba8Unorm => Ok(TextureFormat::Rgba8Unorm),
             _ => Err(Error::new("unsupported texture format")),
+        }
+    }
+}
+
+pub struct VertexBufferLayoutDesc<'desc> {
+    pub stride: usize,
+    pub ty: VertexType,
+    pub attribute_offset: usize,
+    pub attributes: &'desc [VertexFormat],
+}
+
+#[derive(Debug, Clone)]
+pub struct VertexBufferLayout {
+    attributes: Vec<wgpu::VertexAttribute>,
+    array_stride: u64,
+    step_mode: wgpu::VertexStepMode,
+}
+
+impl VertexBufferLayout {
+    pub fn new(desc: &VertexBufferLayoutDesc) -> Self {
+        let mut offset = 0;
+        let mut attributes = Vec::with_capacity(desc.attributes.len());
+        for (i, format) in desc.attributes.iter().enumerate() {
+            attributes.push(wgpu::VertexAttribute {
+                format: (*format).into(),
+                offset,
+                shader_location: (desc.attribute_offset + i) as u32,
+            });
+            offset += format.size() as u64
+        }
+
+        VertexBufferLayout {
+            attributes,
+            array_stride: desc.stride as u64,
+            step_mode: desc.ty.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum VertexFormat {
+    Uint32,
+}
+
+impl VertexFormat {
+    pub fn size(&self) -> usize {
+        Into::<wgpu::VertexFormat>::into(*self).size() as usize
+    }
+}
+
+impl From<VertexFormat> for wgpu::VertexFormat {
+    fn from(format: VertexFormat) -> Self {
+        match format {
+            VertexFormat::Uint32 => wgpu::VertexFormat::Uint32,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum VertexType {
+    Instance,
+    Vertex,
+}
+
+impl From<VertexType> for wgpu::VertexStepMode {
+    fn from(ty: VertexType) -> Self {
+        match ty {
+            VertexType::Instance => wgpu::VertexStepMode::Instance,
+            VertexType::Vertex => wgpu::VertexStepMode::Vertex,
         }
     }
 }
@@ -841,12 +932,18 @@ fn handle_flush(
             vertices,
             instances,
             bind_groups,
+            vertex_buffers,
         } in &buf.draws[pass.draws.clone()]
         {
             // todo: cache the set values and only reset if they change.
             for (index, bg) in bind_groups.iter().enumerate() {
                 if let Some(bg) = bg {
                     rpass.set_bind_group(index as u32, &bg.bg, &[]);
+                }
+            }
+            for (slot, buffer) in vertex_buffers.iter().enumerate() {
+                if let Some(buffer) = buffer {
+                    rpass.set_vertex_buffer(slot as u32, buffer.buffer.slice(..));
                 }
             }
             rpass.set_pipeline(pipeline);

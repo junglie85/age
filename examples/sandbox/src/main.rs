@@ -4,6 +4,7 @@ use age::{
     math::Mat4, App, BindGroup, BindGroupDesc, BindGroupLayout, BindGroupLayoutDesc,
     BindingResource, BindingType, Buffer, BufferDesc, BufferType, Camera, Color, Error, Game,
     PipelineLayoutDesc, RenderPipeline, RenderPipelineDesc, ShaderDesc, TextureFormat,
+    VertexBufferLayout, VertexBufferLayoutDesc, VertexFormat, VertexType,
 };
 
 struct Sandbox {
@@ -12,6 +13,7 @@ struct Sandbox {
     pipeline: RenderPipeline,
     view_proj_uniform: Buffer,
     global_bg: BindGroup,
+    instance_buffer: Buffer,
 }
 
 impl Game for Sandbox {
@@ -39,6 +41,7 @@ impl Game for Sandbox {
             vs_main: "vs_main",
             fs_main: "fs_main",
             format: TextureFormat::Bgra8Unorm,
+            buffers: &[InstanceVertex::layout()],
         });
 
         // ---
@@ -54,11 +57,18 @@ impl Game for Sandbox {
             entries: &[BindingResource::Buffer(&view_proj_uniform)],
         });
 
+        let instance_buffer = app.device.create_buffer(&BufferDesc {
+            label: Some("instances"),
+            size: std::mem::size_of::<InstanceVertex>(),
+            ty: BufferType::Vertex,
+        });
+
         Ok(Self {
             global_bgl,
             pipeline,
             view_proj_uniform,
             global_bg,
+            instance_buffer,
         })
     }
 
@@ -69,9 +79,15 @@ impl Game for Sandbox {
         app.device
             .write_buffer(&self.view_proj_uniform, &view_projections);
 
+        let instances = vec![InstanceVertex {
+            view_proj_index: (view_projections.len() - 1) as u32,
+        }];
+        app.device.write_buffer(&self.instance_buffer, &instances);
+
         let mut buf = app.interface.get_command_buffer();
         buf.begin_render_pass(&app.window, Some(Color::RED));
         buf.set_bind_group(0, &self.global_bg);
+        buf.set_vertex_buffer(0, &self.instance_buffer);
         buf.set_render_pipeline(&self.pipeline); // this will come from the sprite's material. could be a default pipeline based on the renderer/pass type?
         buf.draw(0..3, 0..1);
 
@@ -81,4 +97,21 @@ impl Game for Sandbox {
 
 fn main() -> ExitCode {
     age::run::<Sandbox>()
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct InstanceVertex {
+    pub view_proj_index: u32,
+}
+
+impl InstanceVertex {
+    pub fn layout() -> VertexBufferLayout {
+        VertexBufferLayout::new(&VertexBufferLayoutDesc {
+            stride: std::mem::size_of::<Self>(),
+            ty: VertexType::Instance,
+            attribute_offset: 0,
+            attributes: &[VertexFormat::Uint32],
+        })
+    }
 }

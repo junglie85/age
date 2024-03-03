@@ -1,10 +1,11 @@
 use std::process::ExitCode;
 
 use age::{
-    math::Mat4, App, BindGroup, BindGroupDesc, BindGroupLayout, BindGroupLayoutDesc,
-    BindingResource, BindingType, Buffer, BufferDesc, BufferType, Camera, Color, Error, Game,
-    PipelineLayoutDesc, RenderPipeline, RenderPipelineDesc, ShaderDesc, TextureFormat,
-    VertexBufferLayout, VertexBufferLayoutDesc, VertexFormat, VertexType,
+    math::{v2, Mat4, Vec2f},
+    App, BindGroup, BindGroupDesc, BindGroupLayout, BindGroupLayoutDesc, BindingResource,
+    BindingType, Buffer, BufferDesc, BufferType, Camera, Color, Error, Game, PipelineLayoutDesc,
+    RenderPipeline, RenderPipelineDesc, ShaderDesc, TextureFormat, VertexBufferLayout,
+    VertexBufferLayoutDesc, VertexFormat, VertexType,
 };
 
 struct Sandbox {
@@ -118,10 +119,20 @@ impl Game for Sandbox {
         app.device
             .write_buffer(&self.view_proj_storage, &view_projections);
 
+        let origin = v2(200.0, 100.0);
+        let pos = v2(100.0, 200.0);
+        let rotation = 0.0;
+        let scale = Vec2f::ONE;
+        let model = Mat4::translation(pos)
+            * Mat4::translation(origin)
+            * Mat4::rotation(rotation)
+            * Mat4::translation(-origin)
+            * Mat4::scale(scale);
         let instance_data = [InstanceData {
             size: [400.0, 200.0],
             _pad1: [0.0; 2],
             color: Color::BLUE.to_array_f32(),
+            model: model.to_cols_array(),
         }];
         app.device
             .write_buffer(&self.instance_data_storage, &instance_data);
@@ -204,4 +215,5 @@ pub struct InstanceData {
     pub size: [f32; 2],
     pub _pad1: [f32; 2],
     pub color: [f32; 4],
+    pub model: [f32; 16],
 }

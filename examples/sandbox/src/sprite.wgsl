@@ -12,6 +12,7 @@ struct InstanceData {
     size: vec2<f32>,
     _pad1: vec2<f32>,
     color: vec4<f32>,
+    model: mat4x4<f32>,
 }
 
 struct VsOut {
@@ -35,7 +36,8 @@ fn vs_main(vertex: GeometryVertex, instance_vertex: InstanceVertex) -> VsOut {
 
     var pos = vec4(vertex.position.x * width, vertex.position.y * height, 0.0, 1.0);
 
-    var final_pos = view_proj * pos;
+    let model = instance.model;
+    var final_pos = view_proj * model * pos;
 
     return VsOut(final_pos, instance.color);
 }

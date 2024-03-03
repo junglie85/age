@@ -662,10 +662,16 @@ impl VertexBufferLayout {
             step_mode: desc.ty.into(),
         }
     }
+
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> usize {
+        self.attributes.len()
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum VertexFormat {
+    Float32x2,
     Uint32,
 }
 
@@ -678,6 +684,7 @@ impl VertexFormat {
 impl From<VertexFormat> for wgpu::VertexFormat {
     fn from(format: VertexFormat) -> Self {
         match format {
+            VertexFormat::Float32x2 => wgpu::VertexFormat::Float32x2,
             VertexFormat::Uint32 => wgpu::VertexFormat::Uint32,
         }
     }

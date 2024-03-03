@@ -8,6 +8,7 @@ use age::{
 };
 
 struct Sandbox {
+    geometry_vertices: Vec<GeometryVertex>,
     #[allow(dead_code)]
     global_bgl: BindGroupLayout,
     #[allow(dead_code)]
@@ -17,11 +18,14 @@ struct Sandbox {
     global_bg: BindGroup,
     instance_data_storage: Buffer,
     instance_bg: BindGroup,
+    geometry_buffer: Buffer,
     instance_buffer: Buffer,
 }
 
 impl Game for Sandbox {
     fn on_start(app: &mut App) -> Result<Self, Error> {
+        let geometry_vertices = Vec::from_iter(TRIANGLE);
+
         let global_bgl = app.device.create_bind_group_layout(&BindGroupLayoutDesc {
             label: Some("global"),
             entries: &[BindingType::Storage {
@@ -52,7 +56,7 @@ impl Game for Sandbox {
             vs_main: "vs_main",
             fs_main: "fs_main",
             format: TextureFormat::Bgra8Unorm,
-            buffers: &[InstanceVertex::layout()],
+            buffers: &[GeometryVertex::layout(), InstanceVertex::layout()],
         });
 
         // ---
@@ -79,6 +83,14 @@ impl Game for Sandbox {
             entries: &[BindingResource::Buffer(&instance_data_storage)],
         });
 
+        let geometry_buffer = app.device.create_buffer(&BufferDesc {
+            label: Some("geometry"),
+            size: std::mem::size_of::<GeometryVertex>() * geometry_vertices.len(),
+            ty: BufferType::Vertex,
+        });
+        app.device
+            .write_buffer(&geometry_buffer, &geometry_vertices);
+
         let instance_buffer = app.device.create_buffer(&BufferDesc {
             label: Some("instances"),
             size: std::mem::size_of::<InstanceVertex>(),
@@ -86,6 +98,7 @@ impl Game for Sandbox {
         });
 
         Ok(Self {
+            geometry_vertices,
             global_bgl,
             instance_bgl,
             pipeline,
@@ -93,6 +106,7 @@ impl Game for Sandbox {
             global_bg,
             instance_data_storage,
             instance_bg,
+            geometry_buffer,
             instance_buffer,
         })
     }
@@ -120,9 +134,12 @@ impl Game for Sandbox {
         buf.begin_render_pass(&app.window, Some(Color::RED));
         buf.set_bind_group(0, &self.global_bg);
         buf.set_bind_group(1, &self.instance_bg);
-        buf.set_vertex_buffer(0, &self.instance_buffer);
+        buf.set_vertex_buffer(0, &self.geometry_buffer);
+        buf.set_vertex_buffer(1, &self.instance_buffer);
         buf.set_render_pipeline(&self.pipeline); // this will come from the sprite's material. could be a default pipeline based on the renderer/pass type?
-        buf.draw(0..3, 0..1);
+
+        // todo: next index buffer.
+        buf.draw(0..self.geometry_vertices.len(), 0..instances.len());
 
         app.proxy.enqueue(buf);
     }
@@ -130,6 +147,35 @@ impl Game for Sandbox {
 
 fn main() -> ExitCode {
     age::run::<Sandbox>()
+}
+
+const TRIANGLE: [GeometryVertex; 3] = [
+    GeometryVertex {
+        position: [0.0, 0.0],
+    },
+    GeometryVertex {
+        position: [0.5, 1.0],
+    },
+    GeometryVertex {
+        position: [1.0, 0.0],
+    },
+];
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct GeometryVertex {
+    pub position: [f32; 2],
+}
+
+impl GeometryVertex {
+    pub fn layout() -> VertexBufferLayout {
+        VertexBufferLayout::new(&VertexBufferLayoutDesc {
+            stride: std::mem::size_of::<Self>(),
+            ty: VertexType::Vertex,
+            attribute_offset: 0,
+            attributes: &[VertexFormat::Float32x2],
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -144,7 +190,7 @@ impl InstanceVertex {
         VertexBufferLayout::new(&VertexBufferLayoutDesc {
             stride: std::mem::size_of::<Self>(),
             ty: VertexType::Instance,
-            attribute_offset: 0,
+            attribute_offset: GeometryVertex::layout().len(),
             attributes: &[VertexFormat::Uint32, VertexFormat::Uint32],
         })
     }

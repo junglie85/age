@@ -10,9 +10,13 @@ use age::{
 struct Sandbox {
     #[allow(dead_code)]
     global_bgl: BindGroupLayout,
+    #[allow(dead_code)]
+    instance_bgl: BindGroupLayout,
     pipeline: RenderPipeline,
-    view_proj_uniform: Buffer,
+    view_proj_storage: Buffer,
     global_bg: BindGroup,
+    instance_data_storage: Buffer,
+    instance_bg: BindGroup,
     instance_buffer: Buffer,
 }
 
@@ -25,10 +29,17 @@ impl Game for Sandbox {
                 min_size: std::mem::size_of::<Mat4>(),
             }],
         });
+        let instance_bgl = app.device.create_bind_group_layout(&BindGroupLayoutDesc {
+            label: Some("instance data"),
+            entries: &[BindingType::Storage {
+                read_only: true,
+                min_size: std::mem::size_of::<InstanceData>(),
+            }],
+        });
 
         let layout = app.device.create_pipeline_layout(&PipelineLayoutDesc {
             label: Some("sprite forward"),
-            bind_group_layouts: &[&global_bgl],
+            bind_group_layouts: &[&global_bgl, &instance_bgl],
         });
         let shader = app.device.create_shader(&ShaderDesc {
             label: Some("sprite forward"),
@@ -46,7 +57,7 @@ impl Game for Sandbox {
 
         // ---
 
-        let view_proj_uniform = app.device.create_buffer(&BufferDesc {
+        let view_proj_storage = app.device.create_buffer(&BufferDesc {
             label: Some("view proj"),
             size: std::mem::size_of::<Mat4>(),
             ty: BufferType::Storage,
@@ -54,7 +65,18 @@ impl Game for Sandbox {
         let global_bg = app.device.create_bind_group(&BindGroupDesc {
             label: Some("globals"),
             layout: &global_bgl,
-            entries: &[BindingResource::Buffer(&view_proj_uniform)],
+            entries: &[BindingResource::Buffer(&view_proj_storage)],
+        });
+
+        let instance_data_storage = app.device.create_buffer(&BufferDesc {
+            label: Some("instance data"),
+            size: std::mem::size_of::<InstanceData>(),
+            ty: BufferType::Storage,
+        });
+        let instance_bg = app.device.create_bind_group(&BindGroupDesc {
+            label: Some("instance data"),
+            layout: &instance_bgl,
+            entries: &[BindingResource::Buffer(&instance_data_storage)],
         });
 
         let instance_buffer = app.device.create_buffer(&BufferDesc {
@@ -65,9 +87,12 @@ impl Game for Sandbox {
 
         Ok(Self {
             global_bgl,
+            instance_bgl,
             pipeline,
-            view_proj_uniform,
+            view_proj_storage,
             global_bg,
+            instance_data_storage,
+            instance_bg,
             instance_buffer,
         })
     }
@@ -77,16 +102,24 @@ impl Game for Sandbox {
         let camera = Camera::new(0.0, width as f32, height as f32, 0.0);
         let view_projections = vec![camera.get_view_projection_matrix()];
         app.device
-            .write_buffer(&self.view_proj_uniform, &view_projections);
+            .write_buffer(&self.view_proj_storage, &view_projections);
+
+        let instance_data = [InstanceData {
+            size: [400.0, 200.0],
+        }];
+        app.device
+            .write_buffer(&self.instance_data_storage, &instance_data);
 
         let instances = vec![InstanceVertex {
             view_proj_index: (view_projections.len() - 1) as u32,
+            instance_index: (instance_data.len() - 1) as u32,
         }];
         app.device.write_buffer(&self.instance_buffer, &instances);
 
         let mut buf = app.interface.get_command_buffer();
         buf.begin_render_pass(&app.window, Some(Color::RED));
         buf.set_bind_group(0, &self.global_bg);
+        buf.set_bind_group(1, &self.instance_bg);
         buf.set_vertex_buffer(0, &self.instance_buffer);
         buf.set_render_pipeline(&self.pipeline); // this will come from the sprite's material. could be a default pipeline based on the renderer/pass type?
         buf.draw(0..3, 0..1);
@@ -103,6 +136,7 @@ fn main() -> ExitCode {
 #[repr(C)]
 pub struct InstanceVertex {
     pub view_proj_index: u32,
+    pub instance_index: u32,
 }
 
 impl InstanceVertex {
@@ -111,7 +145,13 @@ impl InstanceVertex {
             stride: std::mem::size_of::<Self>(),
             ty: VertexType::Instance,
             attribute_offset: 0,
-            attributes: &[VertexFormat::Uint32],
+            attributes: &[VertexFormat::Uint32, VertexFormat::Uint32],
         })
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct InstanceData {
+    pub size: [f32; 2],
 }

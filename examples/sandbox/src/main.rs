@@ -120,6 +120,8 @@ impl Game for Sandbox {
 
         let instance_data = [InstanceData {
             size: [400.0, 200.0],
+            _pad1: [0.0; 2],
+            color: Color::BLUE.to_array_f32(),
         }];
         app.device
             .write_buffer(&self.instance_data_storage, &instance_data);
@@ -200,4 +202,6 @@ impl InstanceVertex {
 #[repr(C)]
 pub struct InstanceData {
     pub size: [f32; 2],
+    pub _pad1: [f32; 2],
+    pub color: [f32; 4],
 }

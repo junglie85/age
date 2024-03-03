@@ -182,7 +182,11 @@ impl RenderDevice {
                 entries: &entries,
             });
 
-        BindGroup { bg: Arc::new(bg) }
+        BindGroup {
+            bg: Arc::new(bg),
+            label: Arc::new(desc.label.map(|s| s.to_string())),
+            layout: desc.layout.clone(),
+        }
     }
 
     pub fn create_bind_group_layout(&self, desc: &BindGroupLayoutDesc) -> BindGroupLayout {
@@ -232,6 +236,8 @@ impl RenderDevice {
 
         Buffer {
             buffer: Arc::new(buffer),
+            label: Arc::new(desc.label.map(|s| s.to_string())),
+            ty: desc.ty,
         }
     }
 
@@ -506,6 +512,18 @@ pub struct BindGroupDesc<'desc> {
 #[derive(Clone)]
 pub struct BindGroup {
     bg: Arc<wgpu::BindGroup>,
+    label: Arc<Option<String>>,
+    layout: BindGroupLayout,
+}
+
+impl BindGroup {
+    pub fn label(&self) -> Option<&str> {
+        self.label.as_deref()
+    }
+
+    pub fn layout(&self) -> &BindGroupLayout {
+        &self.layout
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -537,6 +555,22 @@ pub struct BufferDesc<'desc> {
 #[derive(Clone)]
 pub struct Buffer {
     buffer: Arc<wgpu::Buffer>,
+    label: Arc<Option<String>>,
+    ty: BufferType,
+}
+
+impl Buffer {
+    pub fn label(&self) -> Option<&str> {
+        self.label.as_deref()
+    }
+
+    pub fn size(&self) -> usize {
+        self.buffer.size() as usize
+    }
+
+    pub fn ty(&self) -> BufferType {
+        self.ty
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

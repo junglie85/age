@@ -113,34 +113,96 @@ impl Game for Sandbox {
     }
 
     fn on_update(&mut self, app: &mut App) {
+        let mut view_projections = Vec::new();
+        let mut instance_data = Vec::new();
+        let mut instances = Vec::new();
+
         let (width, height) = app.window.get_size();
         let camera = Camera::new(0.0, width as f32, height as f32, 0.0);
-        let view_projections = vec![camera.get_view_projection_matrix()];
-        app.device
-            .write_buffer(&self.view_proj_storage, &view_projections);
+        view_projections.push(camera.get_view_projection_matrix());
 
-        let origin = v2(200.0, 100.0);
-        let pos = v2(100.0, 200.0);
-        let rotation = 0.0;
-        let scale = Vec2f::ONE;
-        let model = Mat4::translation(pos)
-            * Mat4::translation(origin)
-            * Mat4::rotation(rotation)
-            * Mat4::translation(-origin)
-            * Mat4::scale(scale);
-        let instance_data = [InstanceData {
+        let origin1 = v2(200.0, 100.0);
+        let pos1 = v2(400.0, 200.0);
+        let rotation1 = 0.0_f32.to_radians();
+        let scale1 = Vec2f::ONE;
+        let model1 = Mat4::translation(pos1 - origin1)
+            * Mat4::translation(origin1)
+            * Mat4::rotation(rotation1)
+            * Mat4::translation(-origin1)
+            * Mat4::scale(scale1);
+        let instance1 = InstanceData {
             size: [400.0, 200.0],
             _pad1: [0.0; 2],
             color: Color::BLUE.to_array_f32(),
-            model: model.to_cols_array(),
-        }];
+            model: model1.to_cols_array(),
+        };
+        instance_data.push(instance1);
+        instances.push(InstanceVertex {
+            view_proj_index: (view_projections.len() - 1) as u32,
+            instance_index: (instance_data.len() - 1) as u32,
+        });
+
+        let origin2 = v2(150.0, 75.0);
+        let pos2 = v2(500.0, 200.0);
+        let rotation2 = 0.0_f32.to_radians();
+        let scale2 = Vec2f::ONE;
+        let model2 = Mat4::translation(pos2 - origin2)
+            * Mat4::translation(origin2)
+            * Mat4::rotation(rotation2)
+            * Mat4::translation(-origin2)
+            * Mat4::scale(scale2);
+        let instance2 = InstanceData {
+            size: [300.0, 150.0],
+            _pad1: [0.0; 2],
+            color: Color::YELLOW.to_array_f32(),
+            model: model2.to_cols_array(),
+        };
+        instance_data.push(instance2);
+        instances.push(InstanceVertex {
+            view_proj_index: (view_projections.len() - 1) as u32,
+            instance_index: (instance_data.len() - 1) as u32,
+        });
+
+        let needed = std::mem::size_of::<Mat4>() * view_projections.len();
+        if needed > self.view_proj_storage.size() {
+            self.view_proj_storage = app.device.create_buffer(&BufferDesc {
+                label: self.view_proj_storage.label(),
+                size: needed,
+                ty: self.view_proj_storage.ty(),
+            });
+            self.global_bg = app.device.create_bind_group(&BindGroupDesc {
+                label: self.global_bg.label(),
+                layout: self.global_bg.layout(),
+                entries: &[BindingResource::Buffer(&self.view_proj_storage)],
+            });
+        }
+        app.device
+            .write_buffer(&self.view_proj_storage, &view_projections);
+
+        let needed = std::mem::size_of::<InstanceData>() * instance_data.len();
+        if needed > self.instance_data_storage.size() {
+            self.instance_data_storage = app.device.create_buffer(&BufferDesc {
+                label: self.instance_data_storage.label(),
+                size: needed,
+                ty: self.instance_data_storage.ty(),
+            });
+            self.instance_bg = app.device.create_bind_group(&BindGroupDesc {
+                label: self.instance_bg.label(),
+                layout: self.instance_bg.layout(),
+                entries: &[BindingResource::Buffer(&self.instance_data_storage)],
+            });
+        }
         app.device
             .write_buffer(&self.instance_data_storage, &instance_data);
 
-        let instances = vec![InstanceVertex {
-            view_proj_index: (view_projections.len() - 1) as u32,
-            instance_index: (instance_data.len() - 1) as u32,
-        }];
+        let needed = std::mem::size_of::<InstanceVertex>() * instances.len();
+        if needed > self.instance_buffer.size() {
+            self.instance_buffer = app.device.create_buffer(&BufferDesc {
+                label: self.instance_buffer.label(),
+                size: needed,
+                ty: self.instance_buffer.ty(),
+            });
+        }
         app.device.write_buffer(&self.instance_buffer, &instances);
 
         let mut buf = app.interface.get_command_buffer();
@@ -173,6 +235,27 @@ const TRIANGLE: [GeometryVertex; 3] = [
         position: [1.0, 0.0],
     },
 ];
+
+// const QUAD: [GeometryVertex; 6] = [
+//     GeometryVertex {
+//         position: [0.0, 0.0],
+//     },
+//     GeometryVertex {
+//         position: [0.0, 1.0],
+//     },
+//     GeometryVertex {
+//         position: [1.0, 1.0],
+//     },
+//     GeometryVertex {
+//         position: [0.0, 0.0],
+//     },
+//     GeometryVertex {
+//         position: [1.0, 1.0],
+//     },
+//     GeometryVertex {
+//         position: [1.0, 0.0],
+//     },
+// ];
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]

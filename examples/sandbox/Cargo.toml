@@ -5,3 +5,5 @@ edition.workspace = true
 
 [dependencies]
 age.workspace = true
+
+glam = "0.25.0"

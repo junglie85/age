@@ -1,15 +1,15 @@
 use std::process::ExitCode;
 
 use age::{
+    align_to,
     math::{v2, Mat4, Vec2f},
     App, BindGroup, BindGroupDesc, BindGroupLayout, BindGroupLayoutDesc, BindingResource,
-    BindingType, Buffer, BufferDesc, BufferType, Camera, Color, Error, Game, PipelineLayoutDesc,
-    RenderPipeline, RenderPipelineDesc, ShaderDesc, TextureFormat, VertexBufferLayout,
-    VertexBufferLayoutDesc, VertexFormat, VertexType,
+    BindingType, Buffer, BufferDesc, BufferType, Camera, Color, Error, Game, IndexFormat,
+    PipelineLayoutDesc, RenderPipeline, RenderPipelineDesc, ShaderDesc, TextureFormat,
+    VertexBufferLayout, VertexBufferLayoutDesc, VertexFormat, VertexType, COPY_BUFFER_ALIGNMENT,
 };
 
 struct Sandbox {
-    geometry_vertices: Vec<GeometryVertex>,
     #[allow(dead_code)]
     global_bgl: BindGroupLayout,
     #[allow(dead_code)]
@@ -19,14 +19,13 @@ struct Sandbox {
     global_bg: BindGroup,
     instance_data_storage: Buffer,
     instance_bg: BindGroup,
-    geometry_buffer: Buffer,
+    triangle_buffer: Buffer,
+    triangle_index_buffer: Buffer,
     instance_buffer: Buffer,
 }
 
 impl Game for Sandbox {
     fn on_start(app: &mut App) -> Result<Self, Error> {
-        let geometry_vertices = Vec::from_iter(TRIANGLE);
-
         let global_bgl = app.device.create_bind_group_layout(&BindGroupLayoutDesc {
             label: Some("global"),
             entries: &[BindingType::Storage {
@@ -84,13 +83,25 @@ impl Game for Sandbox {
             entries: &[BindingResource::Buffer(&instance_data_storage)],
         });
 
-        let geometry_buffer = app.device.create_buffer(&BufferDesc {
-            label: Some("geometry"),
-            size: std::mem::size_of::<GeometryVertex>() * geometry_vertices.len(),
+        let triangle_buffer = app.device.create_buffer(&BufferDesc {
+            label: Some("triangle"),
+            size: std::mem::size_of::<GeometryVertex>() * TRIANGLE.len(),
             ty: BufferType::Vertex,
         });
+        app.device.write_buffer(&triangle_buffer, &TRIANGLE);
+
+        let mut triangle_indices = Vec::from_iter(TRIANGLE_INDICES);
+        let alignment = align_to(triangle_indices.len(), COPY_BUFFER_ALIGNMENT);
+        if triangle_indices.len() != alignment {
+            triangle_indices.resize(alignment, 0);
+        }
+        let triangle_index_buffer = app.device.create_buffer(&BufferDesc {
+            label: Some("triangle"),
+            size: std::mem::size_of::<u16>() * triangle_indices.len(),
+            ty: BufferType::Index,
+        });
         app.device
-            .write_buffer(&geometry_buffer, &geometry_vertices);
+            .write_buffer(&triangle_index_buffer, &triangle_indices);
 
         let instance_buffer = app.device.create_buffer(&BufferDesc {
             label: Some("instances"),
@@ -99,7 +110,6 @@ impl Game for Sandbox {
         });
 
         Ok(Self {
-            geometry_vertices,
             global_bgl,
             instance_bgl,
             pipeline,
@@ -107,7 +117,8 @@ impl Game for Sandbox {
             global_bg,
             instance_data_storage,
             instance_bg,
-            geometry_buffer,
+            triangle_buffer,
+            triangle_index_buffer,
             instance_buffer,
         })
     }
@@ -209,12 +220,11 @@ impl Game for Sandbox {
         buf.begin_render_pass(&app.window, Some(Color::RED));
         buf.set_bind_group(0, &self.global_bg);
         buf.set_bind_group(1, &self.instance_bg);
-        buf.set_vertex_buffer(0, &self.geometry_buffer);
+        buf.set_vertex_buffer(0, &self.triangle_buffer);
         buf.set_vertex_buffer(1, &self.instance_buffer);
+        buf.set_index_buffer(&self.triangle_index_buffer, IndexFormat::Uint16);
         buf.set_render_pipeline(&self.pipeline); // this will come from the sprite's material. could be a default pipeline based on the renderer/pass type?
-
-        // todo: next index buffer.
-        buf.draw(0..self.geometry_vertices.len(), 0..instances.len());
+        buf.draw_indexed(0..TRIANGLE_INDICES.len(), 0..instances.len());
 
         app.proxy.enqueue(buf);
     }
@@ -235,6 +245,8 @@ const TRIANGLE: [GeometryVertex; 3] = [
         position: [1.0, 0.0],
     },
 ];
+
+const TRIANGLE_INDICES: [u16; 3] = [0, 1, 2];
 
 // const QUAD: [GeometryVertex; 6] = [
 //     GeometryVertex {

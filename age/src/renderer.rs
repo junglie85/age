@@ -2,7 +2,7 @@ use std::{
     borrow::Cow,
     collections::VecDeque,
     num::NonZeroU64,
-    ops::{Deref, Range},
+    ops::{Add, Deref, Range, Rem, Sub},
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc::{Receiver, Sender},
@@ -16,8 +16,16 @@ use crate::{
     Color, Error,
 };
 
-#[derive(Clone)]
+pub const COPY_BUFFER_ALIGNMENT: usize = wgpu::COPY_BUFFER_ALIGNMENT as usize;
 
+pub fn align_to<T>(value: T, alignment: T) -> T
+where
+    T: Add<Output = T> + Copy + Default + PartialEq<T> + Rem<Output = T> + Sub<Output = T>,
+{
+    wgpu::util::align_to(value, alignment)
+}
+
+#[derive(Clone)]
 pub struct RenderInterface {
     pool: Arc<Mutex<VecDeque<CommandBuffer>>>,
 }
@@ -223,6 +231,7 @@ impl RenderDevice {
 
     pub fn create_buffer(&self, desc: &BufferDesc) -> Buffer {
         let usage = match desc.ty {
+            BufferType::Index => wgpu::BufferUsages::INDEX,
             BufferType::Storage => wgpu::BufferUsages::STORAGE,
             BufferType::Vertex => wgpu::BufferUsages::VERTEX,
         };
@@ -391,6 +400,8 @@ pub struct CommandBuffer {
     render_pipeline: Option<RenderPipeline>,
     bind_groups: [Option<BindGroup>; Self::MAX_BIND_GROUPS],
     vertex_buffers: [Option<Buffer>; Self::MAX_VERTEX_BUFFERS],
+    index_buffer: Option<Buffer>,
+    index_format: Option<IndexFormat>,
     passes: Vec<RenderPass>,
     draws: Vec<DrawCommand>,
 }
@@ -406,6 +417,8 @@ impl CommandBuffer {
             render_pipeline: None,
             bind_groups: [Self::NONE_BIND_GROUP; Self::MAX_BIND_GROUPS],
             vertex_buffers: [Self::NONE_VERTEX_BUFFER; Self::MAX_VERTEX_BUFFERS],
+            index_buffer: None,
+            index_format: None,
             passes: Vec::new(),
             draws: Vec::new(),
         }
@@ -423,8 +436,9 @@ impl CommandBuffer {
         });
     }
 
-    pub fn draw(&mut self, vertices: Range<usize>, instances: Range<usize>) {
+    pub fn draw_indexed(&mut self, indices: Range<usize>, instances: Range<usize>) {
         assert!(!self.passes.is_empty(), "no render passes are bound");
+        assert!(self.index_buffer.is_some(), "no index buffer is bound");
         assert!(
             self.render_pipeline.is_some(),
             "no render pipeline is bound"
@@ -435,10 +449,12 @@ impl CommandBuffer {
 
         self.draws.push(DrawCommand {
             pipeline: self.render_pipeline.as_ref().unwrap().clone(),
-            vertices: vertices.start as u32..vertices.end as u32,
+            indices: indices.start as u32..indices.end as u32,
             instances: instances.start as u32..instances.end as u32,
             bind_groups: self.bind_groups.clone(),
             vertex_buffers: self.vertex_buffers.clone(),
+            index_buffer: self.index_buffer.clone().unwrap(),
+            index_format: self.index_format.unwrap(),
         });
     }
 
@@ -446,6 +462,8 @@ impl CommandBuffer {
         self.render_pipeline = None;
         self.bind_groups = [Self::NONE_BIND_GROUP; Self::MAX_BIND_GROUPS];
         self.vertex_buffers = [Self::NONE_VERTEX_BUFFER; Self::MAX_VERTEX_BUFFERS];
+        self.index_buffer = None;
+        self.index_format = None;
         self.passes.clear();
         self.draws.clear();
     }
@@ -453,6 +471,11 @@ impl CommandBuffer {
     pub fn set_bind_group(&mut self, index: usize, bind_group: &BindGroup) {
         assert!(index < Self::MAX_BIND_GROUPS);
         self.bind_groups[index] = Some(bind_group.clone());
+    }
+
+    pub fn set_index_buffer(&mut self, buffer: &Buffer, index_format: IndexFormat) {
+        self.index_buffer = Some(buffer.clone());
+        self.index_format = Some(index_format);
     }
 
     pub fn set_render_pipeline(&mut self, pipeline: &RenderPipeline) {
@@ -473,10 +496,12 @@ struct RenderPass {
 
 struct DrawCommand {
     pipeline: RenderPipeline,
-    vertices: Range<u32>,
+    indices: Range<u32>,
     instances: Range<u32>,
     bind_groups: [Option<BindGroup>; CommandBuffer::MAX_BIND_GROUPS],
     vertex_buffers: [Option<Buffer>; CommandBuffer::MAX_VERTEX_BUFFERS],
+    index_buffer: Buffer,
+    index_format: IndexFormat,
 }
 
 // todo: draw target can have multiple color attachments. we want to be able to convert the following into a target:
@@ -575,8 +600,9 @@ impl Buffer {
 
 #[derive(Debug, Clone, Copy)]
 pub enum BufferType {
-    Vertex,
+    Index,
     Storage,
+    Vertex,
 }
 
 pub struct PipelineLayoutDesc<'desc> {
@@ -735,6 +761,30 @@ impl From<VertexType> for wgpu::VertexStepMode {
         match ty {
             VertexType::Instance => wgpu::VertexStepMode::Instance,
             VertexType::Vertex => wgpu::VertexStepMode::Vertex,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum IndexFormat {
+    Uint16,
+    Uint32,
+}
+
+impl IndexFormat {
+    pub fn size(&self) -> usize {
+        match self {
+            IndexFormat::Uint16 => std::mem::size_of::<u16>(),
+            IndexFormat::Uint32 => std::mem::size_of::<u32>(),
+        }
+    }
+}
+
+impl From<IndexFormat> for wgpu::IndexFormat {
+    fn from(format: IndexFormat) -> Self {
+        match format {
+            IndexFormat::Uint16 => wgpu::IndexFormat::Uint16,
+            IndexFormat::Uint32 => wgpu::IndexFormat::Uint32,
         }
     }
 }
@@ -970,10 +1020,12 @@ fn handle_flush(
 
         for DrawCommand {
             pipeline,
-            vertices,
+            indices,
             instances,
             bind_groups,
             vertex_buffers,
+            index_buffer,
+            index_format,
         } in &buf.draws[pass.draws.clone()]
         {
             // todo: cache the set values and only reset if they change.
@@ -987,8 +1039,9 @@ fn handle_flush(
                     rpass.set_vertex_buffer(slot as u32, buffer.buffer.slice(..));
                 }
             }
+            rpass.set_index_buffer(index_buffer.buffer.slice(..), (*index_format).into());
             rpass.set_pipeline(pipeline);
-            rpass.draw(vertices.clone(), instances.clone())
+            rpass.draw_indexed(indices.clone(), 0, instances.clone())
         }
     }
 

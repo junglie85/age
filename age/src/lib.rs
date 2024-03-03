@@ -5,10 +5,10 @@ pub use color::*;
 pub use error::Error;
 pub use graphics::Camera;
 pub use renderer::{
-    BindGroup, BindGroupDesc, BindGroupLayout, BindGroupLayoutDesc, BindingResource, BindingType,
-    Buffer, BufferDesc, BufferType, PipelineLayoutDesc, RenderDevice, RenderPipeline,
-    RenderPipelineDesc, RenderProxy, ShaderDesc, TextureFormat, VertexBufferLayout,
-    VertexBufferLayoutDesc, VertexFormat, VertexType,
+    align_to, BindGroup, BindGroupDesc, BindGroupLayout, BindGroupLayoutDesc, BindingResource,
+    BindingType, Buffer, BufferDesc, BufferType, IndexFormat, PipelineLayoutDesc, RenderDevice,
+    RenderPipeline, RenderPipelineDesc, RenderProxy, ShaderDesc, TextureFormat, VertexBufferLayout,
+    VertexBufferLayoutDesc, VertexFormat, VertexType, COPY_BUFFER_ALIGNMENT,
 };
 
 mod app;

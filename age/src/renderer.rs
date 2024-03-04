@@ -493,6 +493,8 @@ impl CommandBuffer {
         self.index_format = Some(index_format);
     }
 
+    pub fn set_push_constant(&mut self) {}
+
     pub fn set_render_pipeline(&mut self, pipeline: &RenderPipeline) {
         self.render_pipeline = Some(pipeline.clone());
     }

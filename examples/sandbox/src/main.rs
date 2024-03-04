@@ -127,52 +127,10 @@ impl Game for Sandbox {
     }
 
     fn on_update(&mut self, app: &mut App) {
+        let mut buf = app.interface.get_command_buffer();
+        buf.begin_render_pass(&app.window, Some(Color::RED));
+
         let mut view_projections = Vec::new();
-        let mut instance_data = Vec::new();
-        let mut instances = Vec::new();
-
-        let (width, height) = app.window.get_size();
-        let camera = Camera::new(0.0, width as f32, height as f32, 0.0);
-        view_projections.push(camera.get_view_projection_matrix());
-
-        let origin1 = v2(200.0, 100.0);
-        let pos1 = v2(400.0, 200.0);
-        let rotation1 = 0.0_f32.to_radians();
-        let scale1 = v2(400.0, 200.0);
-        let model1 = Mat4::translation(pos1 - origin1)
-            * Mat4::translation(origin1)
-            * Mat4::rotation(rotation1)
-            * Mat4::translation(-origin1)
-            * Mat4::scale(scale1);
-        let instance1 = InstanceData {
-            color: Color::BLUE.to_array_f32(),
-            model: model1.to_cols_array(),
-        };
-        instance_data.push(instance1);
-        instances.push(InstanceVertex {
-            view_proj_index: (view_projections.len() - 1) as u32,
-            instance_index: (instance_data.len() - 1) as u32,
-        });
-
-        let origin2 = v2(150.0, 75.0);
-        let pos2 = v2(500.0, 200.0);
-        let rotation2 = 0.0_f32.to_radians();
-        let scale2 = v2(300.0, 150.0);
-        let model2 = Mat4::translation(pos2 - origin2)
-            * Mat4::translation(origin2)
-            * Mat4::rotation(rotation2)
-            * Mat4::translation(-origin2)
-            * Mat4::scale(scale2);
-        let instance2 = InstanceData {
-            color: Color::YELLOW.to_array_f32(),
-            model: model2.to_cols_array(),
-        };
-        instance_data.push(instance2);
-        instances.push(InstanceVertex {
-            view_proj_index: (view_projections.len() - 1) as u32,
-            instance_index: (instance_data.len() - 1) as u32,
-        });
-
         let needed = std::mem::size_of::<Mat4>() * view_projections.len();
         if needed > self.view_proj_storage.size() {
             self.view_proj_storage = app.device.create_buffer(&BufferDesc {
@@ -189,41 +147,51 @@ impl Game for Sandbox {
         app.device
             .write_buffer(&self.view_proj_storage, &view_projections);
 
-        let needed = std::mem::size_of::<InstanceData>() * instance_data.len();
-        if needed > self.instance_data_storage.size() {
-            self.instance_data_storage = app.device.create_buffer(&BufferDesc {
-                label: self.instance_data_storage.label(),
-                size: needed,
-                ty: self.instance_data_storage.ty(),
-            });
-            self.instance_bg = app.device.create_bind_group(&BindGroupDesc {
-                label: self.instance_bg.label(),
-                layout: self.instance_bg.layout(),
-                entries: &[BindingResource::Buffer(&self.instance_data_storage)],
-            });
-        }
-        app.device
-            .write_buffer(&self.instance_data_storage, &instance_data);
-
-        let needed = std::mem::size_of::<InstanceVertex>() * instances.len();
-        if needed > self.instance_buffer.size() {
-            self.instance_buffer = app.device.create_buffer(&BufferDesc {
-                label: self.instance_buffer.label(),
-                size: needed,
-                ty: self.instance_buffer.ty(),
-            });
-        }
-        app.device.write_buffer(&self.instance_buffer, &instances);
-
-        let mut buf = app.interface.get_command_buffer();
-        buf.begin_render_pass(&app.window, Some(Color::RED));
         buf.set_bind_group(0, &self.global_bg);
-        buf.set_bind_group(1, &self.instance_bg);
+
+        let (width, height) = app.window.get_size();
+        let camera = Camera::new(0.0, width as f32, height as f32, 0.0);
+        view_projections.push(camera.get_view_projection_matrix());
+
+        let origin1 = v2(200.0, 100.0);
+        let pos1 = v2(400.0, 200.0);
+        let rotation1 = 0.0_f32.to_radians();
+        let scale1 = v2(400.0, 200.0);
+        let model1 = Mat4::translation(pos1 - origin1)
+            * Mat4::translation(origin1)
+            * Mat4::rotation(rotation1)
+            * Mat4::translation(-origin1)
+            * Mat4::scale(scale1);
+        let instance1 = PushConstant {
+            color: Color::BLUE.to_array_f32(),
+            model: model1.to_cols_array(),
+        };
+
+        buf.set_render_pipeline(&self.pipeline);
         buf.set_vertex_buffer(0, &self.triangle_buffer);
-        buf.set_vertex_buffer(1, &self.instance_buffer);
         buf.set_index_buffer(&self.triangle_index_buffer, IndexFormat::Uint16);
-        buf.set_render_pipeline(&self.pipeline); // this will come from the sprite's material. could be a default pipeline based on the renderer/pass type?
-        buf.draw_indexed(0..TRIANGLE_INDICES.len(), 0..instances.len());
+        buf.set_push_constant(&instance1);
+        buf.draw_indexed(0..TRIANGLE_INDICES.len(), 0..1);
+
+        let origin2 = v2(150.0, 75.0);
+        let pos2 = v2(500.0, 200.0);
+        let rotation2 = 0.0_f32.to_radians();
+        let scale2 = v2(300.0, 150.0);
+        let model2 = Mat4::translation(pos2 - origin2)
+            * Mat4::translation(origin2)
+            * Mat4::rotation(rotation2)
+            * Mat4::translation(-origin2)
+            * Mat4::scale(scale2);
+        let instance2 = PushConstant {
+            color: Color::YELLOW.to_array_f32(),
+            model: model2.to_cols_array(),
+        };
+
+        buf.set_render_pipeline(&self.pipeline);
+        buf.set_vertex_buffer(0, &self.triangle_buffer);
+        buf.set_index_buffer(&self.triangle_index_buffer, IndexFormat::Uint16);
+        buf.set_push_constant(&instance2);
+        buf.draw_indexed(0..TRIANGLE_INDICES.len(), 0..1);
 
         app.proxy.enqueue(buf);
     }

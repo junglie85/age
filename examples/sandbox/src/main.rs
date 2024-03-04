@@ -2,7 +2,7 @@ use std::process::ExitCode;
 
 use age::{
     align_to,
-    math::{v2, Mat4, Vec2f},
+    math::{v2, Mat4},
     App, BindGroup, BindGroupDesc, BindGroupLayout, BindGroupLayoutDesc, BindingResource,
     BindingType, Buffer, BufferDesc, BufferType, Camera, Color, Error, Game, IndexFormat,
     PipelineLayoutDesc, RenderPipeline, RenderPipelineDesc, ShaderDesc, TextureFormat,
@@ -21,6 +21,8 @@ struct Sandbox {
     instance_bg: BindGroup,
     triangle_buffer: Buffer,
     triangle_index_buffer: Buffer,
+    // quad_buffer: Buffer,
+    // quad_index_buffer: Buffer,
     instance_buffer: Buffer,
 }
 
@@ -135,15 +137,13 @@ impl Game for Sandbox {
         let origin1 = v2(200.0, 100.0);
         let pos1 = v2(400.0, 200.0);
         let rotation1 = 0.0_f32.to_radians();
-        let scale1 = Vec2f::ONE;
+        let scale1 = v2(400.0, 200.0);
         let model1 = Mat4::translation(pos1 - origin1)
             * Mat4::translation(origin1)
             * Mat4::rotation(rotation1)
             * Mat4::translation(-origin1)
             * Mat4::scale(scale1);
         let instance1 = InstanceData {
-            size: [400.0, 200.0],
-            _pad1: [0.0; 2],
             color: Color::BLUE.to_array_f32(),
             model: model1.to_cols_array(),
         };
@@ -156,15 +156,13 @@ impl Game for Sandbox {
         let origin2 = v2(150.0, 75.0);
         let pos2 = v2(500.0, 200.0);
         let rotation2 = 0.0_f32.to_radians();
-        let scale2 = Vec2f::ONE;
+        let scale2 = v2(300.0, 150.0);
         let model2 = Mat4::translation(pos2 - origin2)
             * Mat4::translation(origin2)
             * Mat4::rotation(rotation2)
             * Mat4::translation(-origin2)
             * Mat4::scale(scale2);
         let instance2 = InstanceData {
-            size: [300.0, 150.0],
-            _pad1: [0.0; 2],
             color: Color::YELLOW.to_array_f32(),
             model: model2.to_cols_array(),
         };
@@ -307,8 +305,6 @@ impl InstanceVertex {
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct InstanceData {
-    pub size: [f32; 2],
-    pub _pad1: [f32; 2],
-    pub color: [f32; 4],
     pub model: [f32; 16],
+    pub color: [f32; 4],
 }

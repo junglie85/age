@@ -9,10 +9,8 @@ struct InstanceVertex {
 }
 
 struct InstanceData {
-    size: vec2<f32>,
-    _pad1: vec2<f32>,
-    color: vec4<f32>,
     model: mat4x4<f32>,
+    color: vec4<f32>,
 }
 
 struct VsOut {
@@ -30,14 +28,10 @@ var<storage, read> r_instance_data: array<InstanceData>;
 fn vs_main(vertex: GeometryVertex, instance_vertex: InstanceVertex) -> VsOut {
     let view_proj = r_view_projection[instance_vertex.view_proj_index];
 
+    var position = vec4(vertex.position, 0.0, 1.0);
+
     let instance = r_instance_data[instance_vertex.instance_index];
-    let width = instance.size.x;
-    let height = instance.size.y;
-
-    var pos = vec4(vertex.position.x * width, vertex.position.y * height, 0.0, 1.0);
-
-    let model = instance.model;
-    var final_pos = view_proj * model * pos;
+    var final_pos = view_proj * instance.model * position;
 
     return VsOut(final_pos, instance.color);
 }

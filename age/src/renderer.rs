@@ -11,6 +11,8 @@ use std::{
     thread::JoinHandle,
 };
 
+use wgpu::PushConstantRange;
+
 use crate::{
     os::{Window, WindowId},
     Color, Error,
@@ -78,6 +80,7 @@ struct RenderDeviceInner {
     adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
+    limits: wgpu::Limits,
 }
 
 impl RenderDevice {
@@ -109,22 +112,19 @@ impl RenderDevice {
         let required_features = wgpu::Features::PUSH_CONSTANTS;
         assert!(adapter.features().contains(required_features));
 
+        let limits = adapter.limits();
         let required_limits = wgpu::Limits {
             max_push_constant_size: 128,
             ..Default::default()
         };
         let mut in_limits = true;
-        required_limits.check_limits_with_fail_fn(
-            &adapter.limits(),
-            false,
-            |name, wanted, allowed| {
-                eprintln!(
-                    "limit '{}' failed, wanted {} but allowed {}",
-                    name, wanted, allowed
-                );
-                in_limits = false;
-            },
-        );
+        required_limits.check_limits_with_fail_fn(&limits, false, |name, wanted, allowed| {
+            eprintln!(
+                "limit '{}' failed, wanted {} but allowed {}",
+                name, wanted, allowed
+            );
+            in_limits = false;
+        });
         assert!(in_limits);
 
         let (device, queue) = match pollster::block_on(adapter.request_device(
@@ -147,6 +147,7 @@ impl RenderDevice {
                 adapter,
                 device,
                 queue,
+                limits,
             }),
         })
     }
@@ -161,6 +162,10 @@ impl RenderDevice {
 
     fn get_instance(&self) -> &wgpu::Instance {
         &self.inner.instance
+    }
+
+    fn get_limits(&self) -> &wgpu::Limits {
+        &self.inner.limits
     }
 
     fn get_queue(&self) -> &wgpu::Queue {
@@ -257,12 +262,22 @@ impl RenderDevice {
             .map(|bgl| &*bgl.bgl) // Reference to Deref Arc.
             .collect::<Vec<_>>();
 
+        assert!(desc.push_constants_size <= self.get_limits().max_push_constant_size as usize);
+        let push_constant_range = if desc.push_constants_size > 0 {
+            vec![PushConstantRange {
+                stages: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                range: 0..desc.push_constants_size as u32,
+            }]
+        } else {
+            vec![]
+        };
+
         let layout = self
             .get_device()
             .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: desc.label,
                 bind_group_layouts: &bgl,
-                push_constant_ranges: &[],
+                push_constant_ranges: &push_constant_range,
             });
 
         PipelineLayout { layout }
@@ -608,6 +623,7 @@ pub enum BufferType {
 pub struct PipelineLayoutDesc<'desc> {
     pub label: Option<&'desc str>,
     pub bind_group_layouts: &'desc [&'desc BindGroupLayout],
+    pub push_constants_size: usize,
 }
 
 pub struct PipelineLayout {

@@ -46,6 +46,7 @@ impl Game for Sandbox {
         let layout = app.device.create_pipeline_layout(&PipelineLayoutDesc {
             label: Some("sprite forward"),
             bind_group_layouts: &[&global_bgl, &instance_bgl],
+            push_constants_size: std::mem::size_of::<PushConstant>(),
         });
         let shader = app.device.create_shader(&ShaderDesc {
             label: Some("sprite forward"),
@@ -305,6 +306,13 @@ impl InstanceVertex {
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct InstanceData {
+    pub model: [f32; 16],
+    pub color: [f32; 4],
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct PushConstant {
     pub model: [f32; 16],
     pub color: [f32; 4],
 }

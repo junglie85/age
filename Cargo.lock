@@ -22,11 +22,18 @@ checksum = "c71b1793ee61086797f5c80b6efa2b8ffa6d5dd703f118545808a7f2e27f7046"
 name = "age"
 version = "0.1.0"
 dependencies = [
- "bitflags 2.4.2",
+ "age_math",
+ "bytemuck",
  "pollster",
- "raw-window-handle",
  "wgpu",
  "winit",
+]
+
+[[package]]
+name = "age_math"
+version = "0.1.0"
+dependencies = [
+ "glam",
 ]
 
 [[package]]

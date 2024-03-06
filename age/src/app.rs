@@ -68,9 +68,12 @@ impl App {
 
     pub fn run(self, mut game: impl Game) -> AgeResult {
         let App { config, el, window } = self;
-        let mut ctx = Context { config };
+        let mut ctx = Context {
+            config,
+            running: true,
+        };
 
-        game.on_start(&mut ctx)?;
+        game.on_start(&mut ctx);
         window.set_visible(true);
 
         os::run(el, |event, elwt| {
@@ -80,7 +83,13 @@ impl App {
                 {
                     #[allow(clippy::single_match)]
                     match event {
-                        WindowEvent::CloseRequested => elwt.exit(),
+                        WindowEvent::CloseRequested => game.on_exit(&mut ctx),
+
+                        WindowEvent::RedrawRequested => {
+                            game.on_update(&mut ctx);
+                            game.on_render(&mut ctx);
+                            window.request_redraw();
+                        }
 
                         _ => {}
                     }
@@ -89,13 +98,14 @@ impl App {
                 _ => {}
             }
 
-            game.on_update(&mut ctx)?;
-            game.on_render(&mut ctx)?;
+            if !ctx.running {
+                elwt.exit();
+            }
 
             Ok(())
         })?;
 
-        game.on_stop(&mut ctx)?;
+        game.on_stop(&mut ctx);
 
         Ok(())
     }
@@ -104,4 +114,11 @@ impl App {
 pub struct Context {
     #[allow(dead_code)]
     config: AppConfig,
+    running: bool,
+}
+
+impl Context {
+    pub fn exit(&mut self) {
+        self.running = false;
+    }
 }

@@ -101,16 +101,17 @@ impl App {
         os::run(el, |event, elwt| {
             #[allow(clippy::collapsible_match)]
             match event {
-                Event::WindowEvent { window_id, event } if window.id() == window_id => {
+                Event::WindowEvent { window_id, event } if window.id() == window_id =>
+                {
                     #[allow(clippy::single_match)]
                     match event {
                         WindowEvent::CloseRequested => game.on_exit(&mut ctx),
 
                         WindowEvent::RedrawRequested => {
                             game.on_update(&mut ctx);
-                            // renderer.begin_frame();
+                            ctx.device.begin_frame();
                             game.on_render(&mut ctx);
-                            // renderer.end_frame(&surface);
+                            ctx.device.end_frame(&mut surface)?;
                             window.pre_present_notify();
                             surface.present();
                             window.request_redraw();

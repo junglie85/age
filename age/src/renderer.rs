@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use wgpu::{CreateSurfaceError, PresentMode, Surface, TextureFormat};
+use wgpu::{
+    CommandEncoderDescriptor, CreateSurfaceError, LoadOp, Operations, PresentMode,
+    RenderPassColorAttachment, RenderPassDescriptor, StoreOp, Surface, SurfaceError,
+    SurfaceTexture, TextureFormat, TextureView, TextureViewDescriptor,
+};
 use winit::window::Window;
 
 use crate::{AgeError, AgeResult};
@@ -21,7 +25,7 @@ impl RenderDevice {
         };
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::VULKAN, //DX12,
+            backends: wgpu::Backends::DX12,
             flags,
             ..Default::default()
         });
@@ -79,10 +83,43 @@ impl RenderDevice {
             queue,
         })
     }
+
+    pub(crate) fn begin_frame(&self) {}
+
+    pub(crate) fn end_frame(&self, surface: &mut WindowSurface) -> AgeResult {
+        let mut encoder = self
+            .device
+            .create_command_encoder(&CommandEncoderDescriptor {
+                label: Some("end frame"),
+            });
+
+        {
+            let view = surface.acquire()?;
+            let _rpass = encoder.begin_render_pass(&RenderPassDescriptor {
+                label: Some("window surface"),
+                color_attachments: &[Some(RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: Operations {
+                        load: LoadOp::Clear(wgpu::Color::RED),
+                        store: StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+        }
+
+        self.queue.submit([encoder.finish()]);
+
+        Ok(())
+    }
 }
 
 pub(crate) struct WindowSurface {
     surface: Option<Surface<'static>>,
+    surface_texture: Option<SurfaceTexture>,
     vsync: bool,
 }
 
@@ -90,11 +127,41 @@ impl WindowSurface {
     pub(crate) fn new() -> Self {
         Self {
             surface: None,
+            surface_texture: None,
             vsync: true,
         }
     }
 
-    pub(crate) fn present(&mut self) {}
+    pub(crate) fn acquire(&mut self) -> AgeResult<TextureView> {
+        let Some(surface) = self.surface.as_ref() else {
+            return Err("window surface is not resumed".into());
+        };
+
+        if self.surface_texture.is_none() {
+            // todo: handle the errors that can be recovered from.
+            let surface_texture = surface.get_current_texture()?;
+            self.surface_texture = Some(surface_texture);
+        }
+
+        // Unwrap cannot fail because we just ensured there is a surface texture set.
+        let view =
+            self.surface_texture
+                .as_ref()
+                .unwrap()
+                .texture
+                .create_view(&TextureViewDescriptor {
+                    label: Some("window surface"),
+                    ..Default::default()
+                });
+
+        Ok(view)
+    }
+
+    pub(crate) fn present(&mut self) {
+        if let Some(surface_texture) = self.surface_texture.take() {
+            surface_texture.present();
+        }
+    }
 
     pub(crate) fn reconfigure(
         &mut self,
@@ -134,11 +201,20 @@ impl WindowSurface {
         self.reconfigure(device, width, height, self.vsync)
     }
 
-    pub(crate) fn suspend(&mut self) {}
+    pub(crate) fn suspend(&mut self) {
+        self.surface = None;
+        self.surface_texture = None;
+    }
 }
 
 impl From<CreateSurfaceError> for AgeError {
     fn from(err: CreateSurfaceError) -> Self {
         AgeError::new("failed to create window surface").with_source(err)
+    }
+}
+
+impl From<SurfaceError> for AgeError {
+    fn from(err: SurfaceError) -> Self {
+        AgeError::new("failed to acquire window surface texture").with_source(err)
     }
 }

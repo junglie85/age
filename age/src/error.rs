@@ -35,3 +35,9 @@ impl Error for AgeError {
         self.source.as_deref()
     }
 }
+
+impl From<&str> for AgeError {
+    fn from(message: &str) -> Self {
+        Self::new(message)
+    }
+}

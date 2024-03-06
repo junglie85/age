@@ -1,6 +1,8 @@
 mod app;
 mod error;
+mod graphics;
 mod os;
+mod renderer;
 
 pub use app::{App, AppBuilder, Context};
 pub use error::{AgeError, AgeResult};

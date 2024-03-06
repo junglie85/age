@@ -1,10 +1,16 @@
+use std::sync::Arc;
+
 use winit::{
     event::{Event, WindowEvent},
     event_loop::EventLoop,
     window::Window,
 };
 
-use crate::{os, AgeResult, Game};
+use crate::{
+    os,
+    renderer::{RenderDevice, WindowSurface},
+    AgeResult, Game,
+};
 
 pub(crate) struct AppConfig {
     pub(crate) width: u32,
@@ -46,11 +52,15 @@ impl AppBuilder {
     pub fn build(self) -> AgeResult<App> {
         let el = os::create_event_loop()?;
         let window = os::create_window(&self.config, &el)?;
+        let device = RenderDevice::new()?;
+        let surface = WindowSurface::new();
 
         Ok(App {
             config: self.config,
             el,
             window,
+            device,
+            surface,
         })
     }
 }
@@ -59,6 +69,8 @@ pub struct App {
     config: AppConfig,
     el: EventLoop<()>,
     window: Window,
+    device: RenderDevice,
+    surface: WindowSurface,
 }
 
 impl App {
@@ -67,9 +79,19 @@ impl App {
     }
 
     pub fn run(self, mut game: impl Game) -> AgeResult {
-        let App { config, el, window } = self;
+        let App {
+            config,
+            el,
+            window,
+            device,
+            mut surface,
+        } = self;
+
+        let window = Arc::new(window);
+
         let mut ctx = Context {
             config,
+            device,
             running: true,
         };
 
@@ -79,21 +101,30 @@ impl App {
         os::run(el, |event, elwt| {
             #[allow(clippy::collapsible_match)]
             match event {
-                Event::WindowEvent { window_id, event } if window.id() == window_id =>
-                {
+                Event::WindowEvent { window_id, event } if window.id() == window_id => {
                     #[allow(clippy::single_match)]
                     match event {
                         WindowEvent::CloseRequested => game.on_exit(&mut ctx),
 
                         WindowEvent::RedrawRequested => {
                             game.on_update(&mut ctx);
+                            // renderer.begin_frame();
                             game.on_render(&mut ctx);
+                            // renderer.end_frame(&surface);
+                            window.pre_present_notify();
+                            surface.present();
                             window.request_redraw();
                         }
 
                         _ => {}
                     }
                 }
+
+                Event::Resumed => {
+                    surface.resume(&ctx.device, window.clone())?;
+                    // todo: ensure suitable pipeline is created and cached.
+                }
+                Event::Suspended => surface.suspend(),
 
                 _ => {}
             }
@@ -114,6 +145,7 @@ impl App {
 pub struct Context {
     #[allow(dead_code)]
     config: AppConfig,
+    device: RenderDevice,
     running: bool,
 }
 

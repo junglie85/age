@@ -8,7 +8,7 @@ use winit::{
 
 use crate::{
     os,
-    renderer::{RenderDevice, WindowSurface},
+    renderer::{RenderDevice, WindowSurface, WindowTarget},
     AgeResult, Game,
 };
 
@@ -55,12 +55,16 @@ impl AppBuilder {
         let device = RenderDevice::new()?;
         let surface = WindowSurface::new();
 
+        let (width, height) = window.inner_size().into();
+        let window_target = WindowTarget::new(width, height, &device);
+
         Ok(App {
             config: self.config,
             el,
             window,
             device,
             surface,
+            window_target,
         })
     }
 }
@@ -71,6 +75,7 @@ pub struct App {
     window: Window,
     device: RenderDevice,
     surface: WindowSurface,
+    window_target: WindowTarget,
 }
 
 impl App {
@@ -85,6 +90,7 @@ impl App {
             window,
             device,
             mut surface,
+            window_target,
         } = self;
 
         let window = Arc::new(window);
@@ -92,6 +98,7 @@ impl App {
         let mut ctx = Context {
             config,
             device,
+            window_target,
             running: true,
         };
 
@@ -111,7 +118,7 @@ impl App {
                             game.on_update(&mut ctx);
                             ctx.device.begin_frame();
                             game.on_render(&mut ctx);
-                            ctx.device.end_frame(&mut surface)?;
+                            ctx.device.end_frame(&mut surface, &ctx.window_target)?;
                             window.pre_present_notify();
                             surface.present();
                             window.request_redraw();
@@ -147,6 +154,7 @@ pub struct Context {
     #[allow(dead_code)]
     config: AppConfig,
     device: RenderDevice,
+    window_target: WindowTarget,
     running: bool,
 }
 

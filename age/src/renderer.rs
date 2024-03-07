@@ -267,6 +267,7 @@ impl RenderDevice {
 
         RenderPipeline {
             pipeline: Arc::new(pipeline),
+            format: info.format,
         }
     }
 
@@ -461,6 +462,7 @@ pub(crate) struct WindowTarget {
     sampler: Sampler,
     bg: BindGroup,
     pl: PipelineLayout,
+    shader: Shader,
     pipeline: RenderPipeline,
 }
 
@@ -518,16 +520,25 @@ impl WindowTarget {
             sampler,
             bg,
             pl,
+            shader,
             pipeline,
         }
     }
 
-    pub(crate) fn reconfigure(&self, surface: &WindowSurface) {
-        todo!()
-        // Handle window resized, so resize draw target.
+    pub(crate) fn reconfigure(&mut self, surface: &WindowSurface, device: &RenderDevice) {
+        // todo: Handle window resized, so resize draw target.
 
         // Handle surface format change.
-        // if surface.format() != self.pipeline.format() {}
+        if surface.format() != self.pipeline.format() {
+            self.pipeline = device.create_render_pipeline(&RenderPipelineInfo {
+                label: Some("fullscreen"),
+                layout: &self.pl,
+                shader: &self.shader,
+                vs_main: "vs_main",
+                fs_main: "fs_main",
+                format: surface.format(),
+            });
+        }
     }
 }
 
@@ -561,6 +572,13 @@ pub struct RenderPipelineInfo<'info> {
 #[derive(Debug, Clone)]
 pub struct RenderPipeline {
     pipeline: Arc<wgpu::RenderPipeline>,
+    format: TextureFormat,
+}
+
+impl RenderPipeline {
+    pub fn format(&self) -> TextureFormat {
+        self.format
+    }
 }
 
 impl Deref for RenderPipeline {

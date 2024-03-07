@@ -156,7 +156,7 @@ impl App {
 
                 Event::Resumed => {
                     surface.resume(&ctx.device, window.clone())?;
-                    // todo: ensure suitable pipeline is created and cached.
+                    ctx.window_target.reconfigure(&surface, &ctx.device);
                 }
                 Event::Suspended => surface.suspend(),
 

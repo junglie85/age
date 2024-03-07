@@ -5,7 +5,8 @@ struct VsOut {
 
 @vertex
 fn vs_main(@builtin(vertex_index) id: u32) -> VsOut {
-    let uv = vec2(f32((id << 1) & 2), f32(id & 2));
+    // let uv = vec2(f32((id << 1) & 2), f32(id & 2));
+    let uv = vec2(f32(id & 2), f32((id << 1) & 2));
     let pos = vec4(uv * vec2(2.0, -2.0) + vec2(-1.0, 1.0), 0.0, 1.0);
 
     return VsOut(pos, uv);

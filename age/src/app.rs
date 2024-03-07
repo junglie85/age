@@ -8,7 +8,10 @@ use winit::{
 
 use crate::{
     os,
-    renderer::{RenderDevice, WindowSurface, WindowTarget},
+    renderer::{
+        PipelineLayoutInfo, RenderDevice, RenderPipelineInfo, ShaderInfo, TextureFormat,
+        WindowSurface, WindowTarget,
+    },
     AgeResult, Game,
 };
 
@@ -95,6 +98,25 @@ impl App {
 
         let window = Arc::new(window);
 
+        // Start - Temporary.
+        let shader = device.create_shader(&ShaderInfo {
+            label: Some("triangle"),
+            src: include_str!("shaders/triangle.wgsl"),
+        });
+        let pl = device.create_pipeline_layout(&PipelineLayoutInfo {
+            label: Some("triangle"),
+            bind_group_layouts: &[],
+        });
+        let triangle_pipeline = device.create_render_pipeline(&RenderPipelineInfo {
+            label: Some("triangle"),
+            layout: &pl,
+            shader: &shader,
+            vs_main: "vs_main",
+            fs_main: "fs_main",
+            format: TextureFormat::Rgba8Unorm,
+        });
+        // End - Temporary.
+
         let mut ctx = Context {
             config,
             device,
@@ -118,7 +140,11 @@ impl App {
                             game.on_update(&mut ctx);
                             ctx.device.begin_frame();
                             game.on_render(&mut ctx);
-                            ctx.device.end_frame(&mut surface, &ctx.window_target)?;
+                            ctx.device.end_frame(
+                                &mut surface,
+                                &ctx.window_target,
+                                &triangle_pipeline,
+                            )?;
                             window.pre_present_notify();
                             surface.present();
                             window.request_redraw();

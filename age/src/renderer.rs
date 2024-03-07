@@ -1,12 +1,14 @@
 use std::{borrow::Cow, ops::Deref, sync::Arc};
 
 use wgpu::{
-    BindGroupDescriptor, BindGroupLayoutDescriptor, BindingResource, BindingType,
-    CommandEncoderDescriptor, CreateSurfaceError, Extent3d, LoadOp, Operations, PresentMode,
-    RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor, SamplerDescriptor,
-    ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, Surface, SurfaceError,
-    SurfaceTexture, TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType,
-    TextureUsages, TextureViewDescriptor, TextureViewDimension,
+    BindGroupDescriptor, BindGroupLayoutDescriptor, BindingResource, BlendState, ColorTargetState,
+    ColorWrites, CommandEncoderDescriptor, CreateSurfaceError, Extent3d, Face, FragmentState,
+    FrontFace, LoadOp, MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode,
+    PresentMode, PrimitiveState, PrimitiveTopology, RenderPassColorAttachment,
+    RenderPassDescriptor, RenderPipelineDescriptor, SamplerDescriptor, ShaderModuleDescriptor,
+    ShaderSource, ShaderStages, StoreOp, Surface, SurfaceError, SurfaceTexture, TextureDescriptor,
+    TextureDimension, TextureSampleType, TextureUsages, TextureViewDescriptor,
+    TextureViewDimension, VertexState,
 };
 use winit::window::Window;
 
@@ -93,6 +95,7 @@ impl RenderDevice {
         &mut self,
         surface: &mut WindowSurface,
         window_target: &WindowTarget,
+        triangle_pipeline: &RenderPipeline,
     ) -> AgeResult {
         let mut encoder = self
             .device
@@ -102,8 +105,8 @@ impl RenderDevice {
 
         {
             let view = &window_target.draw_target.color_target;
-            let _rpass = encoder.begin_render_pass(&RenderPassDescriptor {
-                label: Some("window surface"),
+            let mut rpass = encoder.begin_render_pass(&RenderPassDescriptor {
+                label: Some("window target"),
                 color_attachments: &[Some(RenderPassColorAttachment {
                     view,
                     resolve_target: None,
@@ -116,12 +119,15 @@ impl RenderDevice {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
+
+            rpass.set_pipeline(triangle_pipeline);
+            rpass.draw(0..3, 0..1);
         }
 
         {
             let view = surface.acquire()?;
             let mut rpass = encoder.begin_render_pass(&RenderPassDescriptor {
-                label: Some("window surface"),
+                label: Some("window surface selecta"),
                 color_attachments: &[Some(RenderPassColorAttachment {
                     view: &view,
                     resolve_target: None,
@@ -146,74 +152,117 @@ impl RenderDevice {
     }
 
     pub fn create_bind_group(&self, info: &BindGroupInfo) -> BindGroup {
-        let mut layout_entries = Vec::with_capacity(info.entries.len());
         let mut entries = Vec::with_capacity(info.entries.len());
         for (i, entry) in info.entries.iter().enumerate() {
-            let (ty, resource) = match *entry {
-                Binding::Sampler { sampler } => {
-                    let ty = BindingType::Sampler(wgpu::SamplerBindingType::Filtering);
-                    let resource = BindingResource::Sampler(sampler);
-                    (ty, resource)
-                }
-
-                Binding::Texture {
-                    texture_view,
-                    sample_count,
-                } => {
-                    let ty = BindingType::Texture {
-                        sample_type: TextureSampleType::Float { filterable: true },
-                        view_dimension: TextureViewDimension::D2,
-                        multisampled: sample_count > 1,
-                    };
-                    let resource = BindingResource::TextureView(texture_view);
-                    (ty, resource)
-                }
+            let resource = match *entry {
+                Binding::Sampler { sampler } => BindingResource::Sampler(sampler),
+                Binding::Texture { texture_view } => BindingResource::TextureView(texture_view),
             };
 
-            let layout_entry = wgpu::BindGroupLayoutEntry {
-                binding: i as u32,
-                visibility: ShaderStages::VERTEX_FRAGMENT,
-                ty,
-                count: None,
-            };
-            layout_entries.push(layout_entry);
-
-            let entry = wgpu::BindGroupEntry {
+            entries.push(wgpu::BindGroupEntry {
                 binding: i as u32,
                 resource,
-            };
-            entries.push(entry);
-        }
-
-        let bgl = self
-            .device
-            .create_bind_group_layout(&BindGroupLayoutDescriptor {
-                label: info.label,
-                entries: &layout_entries,
             });
-        let layout = BindGroupLayout { bgl: Arc::new(bgl) };
+        }
 
         let bg = self.device.create_bind_group(&BindGroupDescriptor {
             label: info.label,
-            layout: &layout,
+            layout: info.layout,
             entries: &entries,
         });
 
         BindGroup { bg: Arc::new(bg) }
     }
 
+    pub fn create_bind_group_layout(&self, info: &BindGroupLayoutInfo) -> BindGroupLayout {
+        let mut entries = Vec::with_capacity(info.entries.len());
+        for (i, entry) in info.entries.iter().enumerate() {
+            let ty = match *entry {
+                BindingType::Sampler => {
+                    wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering)
+                }
+
+                BindingType::Texture { sample_count } => wgpu::BindingType::Texture {
+                    sample_type: TextureSampleType::Float { filterable: true },
+                    view_dimension: TextureViewDimension::D2,
+                    multisampled: sample_count > 1,
+                },
+            };
+
+            entries.push(wgpu::BindGroupLayoutEntry {
+                binding: i as u32,
+                visibility: ShaderStages::VERTEX_FRAGMENT,
+                ty,
+                count: None,
+            });
+        }
+
+        let layout = self
+            .device
+            .create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: info.label,
+                entries: &entries,
+            });
+
+        BindGroupLayout {
+            layout: Arc::new(layout),
+        }
+    }
+
+    pub fn create_pipeline_layout(&self, info: &PipelineLayoutInfo) -> PipelineLayout {
+        let bgls = info
+            .bind_group_layouts
+            .iter()
+            .map(|bgl| &*bgl.layout)
+            .collect::<Vec<_>>();
+
+        let layout = self
+            .device
+            .create_pipeline_layout(&PipelineLayoutDescriptor {
+                label: info.label,
+                bind_group_layouts: &bgls,
+                push_constant_ranges: &[],
+            });
+
+        PipelineLayout {
+            layout: Arc::new(layout),
+        }
+    }
+
     pub fn create_render_pipeline(&self, info: &RenderPipelineInfo) -> RenderPipeline {
         let pipeline = self
             .device
             .create_render_pipeline(&RenderPipelineDescriptor {
-                label: todo!(),
-                layout: todo!(),
-                vertex: todo!(),
-                primitive: todo!(),
-                depth_stencil: todo!(),
-                multisample: todo!(),
-                fragment: todo!(),
-                multiview: todo!(),
+                label: info.label,
+                layout: Some(info.layout),
+                vertex: VertexState {
+                    module: info.shader,
+                    entry_point: info.vs_main,
+                    buffers: &[],
+                },
+                primitive: PrimitiveState {
+                    topology: PrimitiveTopology::TriangleList,
+                    front_face: FrontFace::Ccw,
+                    cull_mode: Some(Face::Back),
+                    polygon_mode: PolygonMode::Fill,
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                multisample: MultisampleState {
+                    count: 1,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
+                fragment: Some(FragmentState {
+                    module: info.shader,
+                    entry_point: info.fs_main,
+                    targets: &[Some(ColorTargetState {
+                        format: info.format.into(),
+                        blend: Some(BlendState::ALPHA_BLENDING), // todo: blend states
+                        write_mask: ColorWrites::ALL,            // todo: blend color mask
+                    })],
+                }),
+                multiview: None,
             });
 
         RenderPipeline {
@@ -232,14 +281,15 @@ impl RenderDevice {
             mip_level_count: 1,
             sample_count: info.sample_count,
             dimension: TextureDimension::D2,
-            format: TextureFormat::Bgra8Unorm, // todo: make this rgba unorm or srgb?
+            format: info.format.into(),
             usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
-            view_formats: &[TextureFormat::Bgra8Unorm], // todo: handle srgb / non-srgb
+            view_formats: &[info.format.into()], // todo: handle srgb / non-srgb
         });
 
         RenderTexture {
             texture: Arc::new(texture),
             sample_count: info.sample_count,
+            format: info.format,
         }
     }
 
@@ -270,22 +320,28 @@ impl RenderDevice {
     }
 }
 
-pub struct BindGroupInfo<'info> {
+pub struct BindGroupLayoutInfo<'info> {
     pub label: Option<&'info str>,
-    pub entries: &'info [Binding<'info>],
+    pub entries: &'info [BindingType],
 }
 
 #[derive(Clone)]
-struct BindGroupLayout {
-    bgl: Arc<wgpu::BindGroupLayout>,
+pub struct BindGroupLayout {
+    layout: Arc<wgpu::BindGroupLayout>,
 }
 
 impl Deref for BindGroupLayout {
     type Target = wgpu::BindGroupLayout;
 
     fn deref(&self) -> &Self::Target {
-        &self.bgl
+        &self.layout
     }
+}
+
+pub struct BindGroupInfo<'info> {
+    pub label: Option<&'info str>,
+    pub layout: &'info BindGroupLayout,
+    pub entries: &'info [Binding<'info>],
 }
 
 #[derive(Clone)]
@@ -303,13 +359,14 @@ impl Deref for BindGroup {
 
 #[derive(Debug, Clone)]
 pub enum Binding<'a> {
-    Sampler {
-        sampler: &'a Sampler,
-    },
-    Texture {
-        texture_view: &'a TextureView,
-        sample_count: u32,
-    },
+    Sampler { sampler: &'a Sampler },
+    Texture { texture_view: &'a TextureView },
+}
+
+#[derive(Debug, Clone)]
+pub enum BindingType {
+    Sampler,
+    Texture { sample_count: u32 },
 }
 
 pub struct SamplerInfo<'info> {
@@ -403,6 +460,7 @@ pub(crate) struct WindowTarget {
     #[allow(dead_code)]
     sampler: Sampler,
     bg: BindGroup,
+    pl: PipelineLayout,
     pipeline: RenderPipeline,
 }
 
@@ -412,17 +470,28 @@ impl WindowTarget {
             label: Some("window target"),
             width,
             height,
+            // This is the format of the color target, not the window surface.
+            format: TextureFormat::Rgba8Unorm, // todo: make this rgba unorm or srgb?
             ..Default::default()
         });
         let draw_target = DrawTarget::new(&color_target);
         let sampler = device.create_sampler(&SamplerInfo::default());
+        let bgl = device.create_bind_group_layout(&BindGroupLayoutInfo {
+            label: Some("window target"),
+            entries: &[
+                BindingType::Sampler,
+                BindingType::Texture {
+                    sample_count: color_target.sample_count(),
+                },
+            ],
+        });
         let bg = device.create_bind_group(&BindGroupInfo {
             label: Some("window target"),
+            layout: &bgl,
             entries: &[
                 Binding::Sampler { sampler: &sampler },
                 Binding::Texture {
                     texture_view: draw_target.color_target(),
-                    sample_count: color_target.sample_count(),
                 },
             ],
         });
@@ -430,27 +499,63 @@ impl WindowTarget {
             label: Some("fullscreen"),
             src: include_str!("shaders/fullscreen.wgsl"),
         });
+        let pl = device.create_pipeline_layout(&PipelineLayoutInfo {
+            label: Some("fullscreen"),
+            bind_group_layouts: &[&bgl],
+        });
         let pipeline = device.create_render_pipeline(&RenderPipelineInfo {
             label: Some("fullscreen"),
+            layout: &pl,
             shader: &shader,
             vs_main: "vs_main",
             fs_main: "fs_main",
+            // This is the format of the window surface, not the draw target.
+            format: TextureFormat::Bgra8Unorm,
         });
 
         WindowTarget {
             draw_target,
             sampler,
             bg,
+            pl,
             pipeline,
         }
+    }
+
+    pub(crate) fn reconfigure(&self, surface: &WindowSurface) {
+        todo!()
+        // Handle window resized, so resize draw target.
+
+        // Handle surface format change.
+        // if surface.format() != self.pipeline.format() {}
+    }
+}
+
+pub struct PipelineLayoutInfo<'info> {
+    pub label: Option<&'info str>,
+    pub bind_group_layouts: &'info [&'info BindGroupLayout],
+}
+
+#[derive(Debug, Clone)]
+pub struct PipelineLayout {
+    layout: Arc<wgpu::PipelineLayout>,
+}
+
+impl Deref for PipelineLayout {
+    type Target = wgpu::PipelineLayout;
+
+    fn deref(&self) -> &Self::Target {
+        &self.layout
     }
 }
 
 pub struct RenderPipelineInfo<'info> {
     pub label: Option<&'info str>,
+    pub layout: &'info PipelineLayout,
     pub shader: &'info Shader,
     pub vs_main: &'info str,
     pub fs_main: &'info str,
+    pub format: TextureFormat,
 }
 
 #[derive(Debug, Clone)]
@@ -484,6 +589,34 @@ impl Deref for Shader {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TextureFormat {
+    Bgra8Unorm,
+    Rgba8Unorm,
+    // todo: srgb
+}
+
+impl From<TextureFormat> for wgpu::TextureFormat {
+    fn from(format: TextureFormat) -> Self {
+        match format {
+            TextureFormat::Bgra8Unorm => wgpu::TextureFormat::Bgra8Unorm,
+            TextureFormat::Rgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
+        }
+    }
+}
+
+impl TryFrom<wgpu::TextureFormat> for TextureFormat {
+    type Error = AgeError;
+
+    fn try_from(format: wgpu::TextureFormat) -> Result<Self, Self::Error> {
+        match format {
+            wgpu::TextureFormat::Bgra8Unorm => Ok(TextureFormat::Bgra8Unorm),
+            wgpu::TextureFormat::Rgba8Unorm => Ok(TextureFormat::Rgba8Unorm),
+            _ => Err("unsupported texture format".into()),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TextureView {
     view: Arc<wgpu::TextureView>,
@@ -501,6 +634,7 @@ pub struct TextureInfo<'info> {
     pub label: Option<&'info str>,
     pub width: u32,
     pub height: u32,
+    pub format: TextureFormat,
     pub sample_count: u32,
 }
 
@@ -510,6 +644,7 @@ impl<'info> Default for TextureInfo<'info> {
             label: None,
             width: 1,
             height: 1,
+            format: TextureFormat::Bgra8Unorm,
             sample_count: 1,
         }
     }
@@ -519,9 +654,14 @@ impl<'info> Default for TextureInfo<'info> {
 pub struct RenderTexture {
     texture: Arc<wgpu::Texture>,
     sample_count: u32,
+    format: TextureFormat,
 }
 
 impl RenderTexture {
+    pub fn format(&self) -> TextureFormat {
+        self.format
+    }
+
     pub fn sample_count(&self) -> u32 {
         self.sample_count
     }
@@ -530,6 +670,7 @@ impl RenderTexture {
 pub(crate) struct WindowSurface {
     surface: Option<Surface<'static>>,
     surface_texture: Option<SurfaceTexture>,
+    format: TextureFormat,
     vsync: bool,
 }
 
@@ -538,6 +679,7 @@ impl WindowSurface {
         Self {
             surface: None,
             surface_texture: None,
+            format: TextureFormat::Bgra8Unorm,
             vsync: true,
         }
     }
@@ -569,6 +711,10 @@ impl WindowSurface {
         })
     }
 
+    pub(crate) fn format(&self) -> TextureFormat {
+        self.format
+    }
+
     pub(crate) fn present(&mut self) {
         if let Some(surface_texture) = self.surface_texture.take() {
             surface_texture.present();
@@ -597,10 +743,12 @@ impl WindowSurface {
             PresentMode::Immediate
         };
 
-        config.format = TextureFormat::Bgra8Unorm; // todo - srgb + pick best format.
+        config.format = wgpu::TextureFormat::Bgra8Unorm; // todo - srgb + pick best format.
         config.present_mode = present_mode;
 
         surface.configure(&device.device, &config);
+
+        self.format = config.format.try_into()?;
 
         Ok(())
     }

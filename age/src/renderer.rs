@@ -10,9 +10,9 @@ use wgpu::{
     FrontFace, LoadOp, MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode,
     PresentMode, PrimitiveState, PrimitiveTopology, RenderPassColorAttachment,
     RenderPassDescriptor, RenderPipelineDescriptor, SamplerDescriptor, ShaderModuleDescriptor,
-    ShaderSource, ShaderStages, StoreOp, Surface, SurfaceError, SurfaceTexture, TextureDescriptor,
-    TextureDimension, TextureSampleType, TextureUsages, TextureViewDescriptor,
-    TextureViewDimension, VertexState,
+    ShaderSource, ShaderStages, StoreOp, Surface, SurfaceConfiguration, SurfaceError,
+    SurfaceTexture, TextureDescriptor, TextureDimension, TextureSampleType, TextureUsages,
+    TextureViewDescriptor, TextureViewDimension, VertexState,
 };
 use winit::window::Window;
 
@@ -101,11 +101,12 @@ impl RenderDevice {
     }
 
     pub(crate) fn begin_frame(&mut self) {
-        self.command_buffer.clear();
+        // Can't clear here because we hold on to a surface texture view which prevents recreating the window surface.
+        // self.command_buffer.clear();
     }
 
     #[allow(unused_assignments)]
-    pub(crate) fn end_frame(&self) {
+    pub(crate) fn end_frame(&mut self) {
         let mut encoder = self
             .device
             .create_command_encoder(&CommandEncoderDescriptor {
@@ -170,6 +171,7 @@ impl RenderDevice {
         rpass = None;
 
         self.queue.submit([encoder.finish()]);
+        self.command_buffer.clear()
     }
 
     pub fn create_bind_group(&self, info: &BindGroupInfo) -> BindGroup {
@@ -511,9 +513,10 @@ impl TryFrom<&mut WindowSurface> for DrawTarget {
 }
 
 pub(crate) struct WindowTarget {
+    color_target: RenderTexture,
     draw_target: DrawTarget,
-    #[allow(dead_code)]
     sampler: Sampler,
+    bgl: BindGroupLayout,
     bg: BindGroup,
     pl: PipelineLayout,
     shader: Shader,
@@ -526,11 +529,9 @@ impl WindowTarget {
             label: Some("window target"),
             width,
             height,
-            // This is the format of the color target, not the window surface.
             format: TextureFormat::Rgba8Unorm, // todo: make this rgba unorm or srgb?
             ..Default::default()
         });
-        let draw_target = DrawTarget::new(&color_target);
         let sampler = device.create_sampler(&SamplerInfo::default());
         let bgl = device.create_bind_group_layout(&BindGroupLayoutInfo {
             label: Some("window target"),
@@ -538,16 +539,6 @@ impl WindowTarget {
                 BindingType::Sampler,
                 BindingType::Texture {
                     sample_count: color_target.sample_count(),
-                },
-            ],
-        });
-        let bg = device.create_bind_group(&BindGroupInfo {
-            label: Some("window target"),
-            layout: &bgl,
-            entries: &[
-                Binding::Sampler { sampler: &sampler },
-                Binding::Texture {
-                    texture_view: draw_target.color_target(),
                 },
             ],
         });
@@ -569,9 +560,14 @@ impl WindowTarget {
             format: TextureFormat::Bgra8Unorm,
         });
 
+        let (draw_target, bg) =
+            Self::create_configurable_resources(&color_target, &bgl, &sampler, device);
+
         WindowTarget {
+            color_target,
             draw_target,
             sampler,
+            bgl,
             bg,
             pl,
             shader,
@@ -580,8 +576,6 @@ impl WindowTarget {
     }
 
     pub(crate) fn reconfigure(&mut self, surface: &WindowSurface, device: &RenderDevice) {
-        // todo: Handle window resized, so resize draw target.
-
         // Handle surface format change.
         if surface.format() != self.pipeline.format() {
             self.pipeline = device.create_render_pipeline(&RenderPipelineInfo {
@@ -593,6 +587,51 @@ impl WindowTarget {
                 format: surface.format(),
             });
         }
+
+        // Handle window size change.
+        if surface.size() != self.color_target.size() {
+            let (width, height) = surface.size();
+            let format = self.color_target.format();
+
+            self.color_target = device.create_render_texture(&TextureInfo {
+                label: Some("window target"),
+                width,
+                height,
+                format,
+                ..Default::default()
+            });
+
+            let (draw_target, bg) = Self::create_configurable_resources(
+                &self.color_target,
+                &self.bgl,
+                &self.sampler,
+                device,
+            );
+
+            self.draw_target = draw_target;
+            self.bg = bg;
+        }
+    }
+
+    fn create_configurable_resources(
+        color_target: &RenderTexture,
+        bgl: &BindGroupLayout,
+        sampler: &Sampler,
+        device: &RenderDevice,
+    ) -> (DrawTarget, BindGroup) {
+        let draw_target = DrawTarget::new(color_target);
+        let bg = device.create_bind_group(&BindGroupInfo {
+            label: Some("window target"),
+            layout: bgl,
+            entries: &[
+                Binding::Sampler { sampler },
+                Binding::Texture {
+                    texture_view: draw_target.color_target(),
+                },
+            ],
+        });
+
+        (draw_target, bg)
     }
 
     pub(crate) fn draw(&self, surface: &mut WindowSurface, device: &mut RenderDevice) -> AgeResult {
@@ -776,6 +815,11 @@ impl RenderTexture {
     pub fn sample_count(&self) -> u32 {
         self.sample_count
     }
+
+    pub fn size(&self) -> (u32, u32) {
+        let size = self.texture.size();
+        (size.width, size.height)
+    }
 }
 
 impl PartialEq for RenderTexture {
@@ -787,8 +831,11 @@ impl PartialEq for RenderTexture {
 
 pub(crate) struct WindowSurface {
     surface: Option<Surface<'static>>,
+    config: Option<SurfaceConfiguration>,
     surface_texture: Option<SurfaceTexture>,
     format: TextureFormat,
+    width: u32,
+    height: u32,
     vsync: bool,
 }
 
@@ -796,8 +843,11 @@ impl WindowSurface {
     pub(crate) fn new() -> Self {
         Self {
             surface: None,
+            config: None,
             surface_texture: None,
             format: TextureFormat::Bgra8Unorm,
+            width: 0,
+            height: 0,
             vsync: true,
         }
     }
@@ -850,9 +900,12 @@ impl WindowSurface {
             return Err("window surface is not resumed".into());
         };
 
-        let mut config = match surface.get_default_config(&device.adapter, width, height) {
+        let mut config = match self.config.take() {
             Some(config) => config,
-            None => return Err("window surface configuration is not supported".into()),
+            None => match surface.get_default_config(&device.adapter, width, height) {
+                Some(config) => config,
+                None => return Err("window surface configuration is not supported".into()),
+            },
         };
 
         let present_mode = if vsync {
@@ -867,6 +920,10 @@ impl WindowSurface {
         surface.configure(&device.device, &config);
 
         self.format = config.format.try_into()?;
+        self.width = config.width;
+        self.height = config.height;
+        self.vsync = vsync;
+        self.config = Some(config);
 
         Ok(())
     }
@@ -881,7 +938,16 @@ impl WindowSurface {
 
     pub(crate) fn suspend(&mut self) {
         self.surface = None;
+        self.config = None;
         self.surface_texture = None;
+    }
+
+    pub(crate) fn size(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+
+    pub(crate) fn vsync(&self) -> bool {
+        self.vsync
     }
 }
 

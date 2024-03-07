@@ -134,6 +134,16 @@ impl App {
                             window.request_redraw();
                         }
 
+                        WindowEvent::Resized(size) => {
+                            let (width, height) = size.into();
+                            surface.reconfigure(&ctx.device, width, height, surface.vsync())?;
+                            ctx.window_target.reconfigure(&surface, &ctx.device);
+                        }
+
+                        WindowEvent::ScaleFactorChanged { .. } => {
+                            todo!("handle scale factor change")
+                        }
+
                         _ => {}
                     }
                 }

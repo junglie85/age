@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use winit::{
     event::{Event, WindowEvent},
-    event_loop::EventLoop,
+    event_loop::{EventLoop, EventLoopProxy},
     window::Window,
 };
 
@@ -51,7 +51,8 @@ impl AppBuilder {
     }
 
     pub fn build(self) -> AgeResult<App> {
-        let el = os::create_event_loop()?;
+        let el = os::create_event_loop::<AppEvent>()?;
+        let el_proxy = el.create_proxy();
         let window = os::create_window(&self.config, &el)?;
         let device = RenderDevice::new()?;
         let surface = WindowSurface::new();
@@ -63,6 +64,7 @@ impl AppBuilder {
         Ok(App {
             config: self.config,
             el,
+            el_proxy,
             window,
             device,
             surface,
@@ -74,7 +76,8 @@ impl AppBuilder {
 
 pub struct App {
     config: AppConfig,
-    el: EventLoop<()>,
+    el: EventLoop<AppEvent>,
+    el_proxy: EventLoopProxy<AppEvent>,
     window: Window,
     device: RenderDevice,
     surface: WindowSurface,
@@ -91,6 +94,7 @@ impl App {
         let App {
             config,
             el,
+            el_proxy,
             window,
             device,
             mut surface,
@@ -102,6 +106,7 @@ impl App {
 
         let mut ctx = Context {
             config,
+            el_proxy,
             device,
             graphics,
             window_target,
@@ -112,11 +117,8 @@ impl App {
         window.set_visible(true);
 
         os::run(el, |event, elwt| {
-            #[allow(clippy::collapsible_match)]
             match event {
-                Event::WindowEvent { window_id, event } if window.id() == window_id =>
-                {
-                    #[allow(clippy::single_match)]
+                Event::WindowEvent { window_id, event } if window.id() == window_id => {
                     match event {
                         WindowEvent::CloseRequested => game.on_exit(&mut ctx),
 
@@ -152,7 +154,17 @@ impl App {
                     surface.resume(&ctx.device, window.clone())?;
                     ctx.window_target.reconfigure(&surface, &ctx.device);
                 }
+
                 Event::Suspended => surface.suspend(),
+
+                Event::UserEvent(event) => match event {
+                    AppEvent::EnableVsync(enabled) => {
+                        if surface.vsync() != enabled {
+                            let (width, height) = surface.size();
+                            surface.reconfigure(&ctx.device, width, height, enabled)?
+                        }
+                    }
+                },
 
                 _ => {}
             }
@@ -170,9 +182,14 @@ impl App {
     }
 }
 
+enum AppEvent {
+    EnableVsync(bool),
+}
+
 pub struct Context {
     #[allow(dead_code)]
     config: AppConfig,
+    el_proxy: EventLoopProxy<AppEvent>,
     device: RenderDevice,
     graphics: Graphics,
     window_target: WindowTarget,
@@ -182,6 +199,16 @@ pub struct Context {
 impl Context {
     pub fn exit(&mut self) {
         self.running = false;
+    }
+
+    pub fn set_vsync(&self, enabled: bool) {
+        if self
+            .el_proxy
+            .send_event(AppEvent::EnableVsync(enabled))
+            .is_err()
+        {
+            eprintln!("attempted to send message on closed event loop");
+        }
     }
 }
 

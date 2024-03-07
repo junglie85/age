@@ -143,15 +143,14 @@ impl App {
                         WindowEvent::CloseRequested => game.on_exit(&mut ctx),
 
                         WindowEvent::RedrawRequested => {
-                            game.on_update(&mut ctx);
-
                             ctx.device.begin_frame();
                             ctx.graphics.set_draw_target(&ctx.window_target);
                             ctx.graphics.set_render_pipeline(&triangle_pipeline); // todo: move this pipeline into graphics.
 
-                            game.on_render(&mut ctx);
+                            game.on_tick(&mut ctx);
 
-                            ctx.device.end_frame(&mut surface, &ctx.window_target)?;
+                            ctx.window_target.draw(&mut surface, &mut ctx.device)?;
+                            ctx.device.end_frame();
 
                             window.pre_present_notify();
                             surface.present();

@@ -30,6 +30,8 @@ impl Graphics {
 
         device.push_draw_command(DrawCommand {
             target: target.clone(),
+            // todo: this is pretty ugly, can we Default DrawCommand?
+            bind_groups: [RenderDevice::EMPTY_BIND_GROUP; RenderDevice::MAX_BIND_GROUPS],
             pipeline: pipeline.clone(),
             vertices: 0..3,
         })

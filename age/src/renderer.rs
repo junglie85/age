@@ -27,6 +27,9 @@ pub struct RenderDevice {
 }
 
 impl RenderDevice {
+    pub const MAX_BIND_GROUPS: usize = 2;
+    pub const EMPTY_BIND_GROUP: Option<BindGroup> = None;
+
     pub(crate) fn new() -> AgeResult<Self> {
         let flags = if cfg!(debug_assertions) {
             wgpu::InstanceFlags::DEBUG | wgpu::InstanceFlags::VALIDATION
@@ -102,11 +105,7 @@ impl RenderDevice {
     }
 
     #[allow(unused_assignments)]
-    pub(crate) fn end_frame(
-        &mut self,
-        surface: &mut WindowSurface,
-        window_target: &WindowTarget,
-    ) -> AgeResult {
+    pub(crate) fn end_frame(&self) {
         let mut encoder = self
             .device
             .create_command_encoder(&CommandEncoderDescriptor {
@@ -115,12 +114,14 @@ impl RenderDevice {
 
         let mut rpass = None;
         let mut target = None;
+        let mut bind_groups = [Self::EMPTY_BIND_GROUP; Self::MAX_BIND_GROUPS];
         let mut pipeline = None;
-        for command in self.command_buffer.commands.iter() {
-            if Some(command.target.color_target.global_id()) != target {
-                target = Some(command.target.color_target.global_id());
 
-                let view = &window_target.draw_target.color_target;
+        for command in self.command_buffer.commands.iter() {
+            if Some(&command.target.color_target) != target.as_ref() {
+                target = Some(command.target.color_target.clone());
+
+                let view = &command.target.color_target;
 
                 // This assignment is unused but we need to drop the current render pass because
                 // it has an exclusive borrow of encoder.
@@ -146,43 +147,29 @@ impl RenderDevice {
                 unreachable!("render pass will always be set by this point");
             };
 
-            if Some(command.pipeline.global_id()) != pipeline {
-                pipeline = Some(command.pipeline.global_id());
+            if Some(&command.pipeline) != pipeline.as_ref() {
+                pipeline = Some(command.pipeline.clone());
                 pass.set_pipeline(&command.pipeline);
+            }
+
+            for (i, bind_group) in command.bind_groups.iter().enumerate() {
+                if &bind_groups[i] != bind_group {
+                    bind_groups[i] = bind_group.clone();
+                    if let Some(bg) = bind_group.as_ref() {
+                        pass.set_bind_group(0, bg, &[]);
+                    }
+                }
             }
 
             pass.draw(0..3, 0..1);
         }
+
         pipeline = None;
+        bind_groups.iter_mut().for_each(|bg| *bg = None);
         target = None;
         rpass = None;
 
-        // Draw window target to window surface.
-        {
-            let view = surface.acquire()?;
-            let mut rpass = encoder.begin_render_pass(&RenderPassDescriptor {
-                label: Some("window surface selecta"),
-                color_attachments: &[Some(RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: Operations {
-                        load: LoadOp::Clear(wgpu::Color::RED),
-                        store: StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-
-            rpass.set_bind_group(0, &window_target.bg, &[]);
-            rpass.set_pipeline(&window_target.pipeline);
-            rpass.draw(0..3, 0..1);
-        }
-
         self.queue.submit([encoder.finish()]);
-
-        Ok(())
     }
 
     pub fn create_bind_group(&self, info: &BindGroupInfo) -> BindGroup {
@@ -396,6 +383,12 @@ impl Deref for BindGroup {
     }
 }
 
+impl PartialEq for BindGroup {
+    fn eq(&self, other: &Self) -> bool {
+        self.bg.global_id() == other.bg.global_id()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Binding<'a> {
     Sampler { sampler: &'a Sampler },
@@ -438,6 +431,12 @@ impl Deref for Sampler {
 
     fn deref(&self) -> &Self::Target {
         &self.sampler
+    }
+}
+
+impl PartialEq for Sampler {
+    fn eq(&self, other: &Self) -> bool {
+        self.sampler.global_id() == other.sampler.global_id()
     }
 }
 
@@ -498,6 +497,16 @@ impl DrawTarget {
 impl From<&WindowTarget> for DrawTarget {
     fn from(window_target: &WindowTarget) -> Self {
         window_target.draw_target.clone()
+    }
+}
+
+impl TryFrom<&mut WindowSurface> for DrawTarget {
+    type Error = AgeError;
+
+    fn try_from(surface: &mut WindowSurface) -> Result<Self, Self::Error> {
+        Ok(DrawTarget {
+            color_target: surface.acquire()?,
+        })
     }
 }
 
@@ -585,6 +594,20 @@ impl WindowTarget {
             });
         }
     }
+
+    pub(crate) fn draw(&self, surface: &mut WindowSurface, device: &mut RenderDevice) -> AgeResult {
+        let mut bind_groups = [RenderDevice::EMPTY_BIND_GROUP; RenderDevice::MAX_BIND_GROUPS];
+        bind_groups[0] = Some(self.bg.clone());
+
+        device.push_draw_command(DrawCommand {
+            target: surface.try_into()?,
+            bind_groups,
+            pipeline: self.pipeline.clone(),
+            vertices: 0..3,
+        });
+
+        Ok(())
+    }
 }
 
 pub struct PipelineLayoutInfo<'info> {
@@ -602,6 +625,12 @@ impl Deref for PipelineLayout {
 
     fn deref(&self) -> &Self::Target {
         &self.layout
+    }
+}
+
+impl PartialEq for PipelineLayout {
+    fn eq(&self, other: &Self) -> bool {
+        self.layout.global_id() == other.layout.global_id()
     }
 }
 
@@ -634,6 +663,13 @@ impl Deref for RenderPipeline {
     }
 }
 
+impl PartialEq for RenderPipeline {
+    fn eq(&self, other: &Self) -> bool {
+        // We don't need to include other fields because their information is inherent in the individual pipeline.
+        self.pipeline.global_id() == other.pipeline.global_id()
+    }
+}
+
 pub struct ShaderInfo<'info> {
     pub label: Option<&'info str>,
     pub src: &'info str,
@@ -649,6 +685,12 @@ impl Deref for Shader {
 
     fn deref(&self) -> &Self::Target {
         &self.shader
+    }
+}
+
+impl PartialEq for Shader {
+    fn eq(&self, other: &Self) -> bool {
+        self.shader.global_id() == other.shader.global_id()
     }
 }
 
@@ -693,6 +735,12 @@ impl Deref for TextureView {
     }
 }
 
+impl PartialEq for TextureView {
+    fn eq(&self, other: &Self) -> bool {
+        self.view.global_id() == other.view.global_id()
+    }
+}
+
 pub struct TextureInfo<'info> {
     pub label: Option<&'info str>,
     pub width: u32,
@@ -727,6 +775,13 @@ impl RenderTexture {
 
     pub fn sample_count(&self) -> u32 {
         self.sample_count
+    }
+}
+
+impl PartialEq for RenderTexture {
+    fn eq(&self, other: &Self) -> bool {
+        // We don't need to include other fields because they are inherent in the texture.
+        self.texture.global_id() == other.texture.global_id()
     }
 }
 
@@ -852,6 +907,7 @@ impl CommandBuffer {
 
 pub struct DrawCommand {
     pub target: DrawTarget,
+    pub bind_groups: [Option<BindGroup>; RenderDevice::MAX_BIND_GROUPS],
     pub pipeline: RenderPipeline,
     pub vertices: Range<u32>,
 }

@@ -7,10 +7,11 @@ use winit::{
 };
 
 use crate::{
+    graphics::Graphics,
     os,
     renderer::{
-        PipelineLayoutInfo, RenderDevice, RenderPipelineInfo, ShaderInfo, TextureFormat,
-        WindowSurface, WindowTarget,
+        DrawTarget, PipelineLayoutInfo, RenderDevice, RenderPipeline, RenderPipelineInfo,
+        ShaderInfo, TextureFormat, WindowSurface, WindowTarget,
     },
     AgeResult, Game,
 };
@@ -61,6 +62,8 @@ impl AppBuilder {
         let (width, height) = window.inner_size().into();
         let window_target = WindowTarget::new(width, height, &device);
 
+        let graphics = Graphics::new();
+
         Ok(App {
             config: self.config,
             el,
@@ -68,6 +71,7 @@ impl AppBuilder {
             device,
             surface,
             window_target,
+            graphics,
         })
     }
 }
@@ -79,6 +83,7 @@ pub struct App {
     device: RenderDevice,
     surface: WindowSurface,
     window_target: WindowTarget,
+    graphics: Graphics,
 }
 
 impl App {
@@ -94,6 +99,7 @@ impl App {
             device,
             mut surface,
             window_target,
+            graphics,
         } = self;
 
         let window = Arc::new(window);
@@ -120,6 +126,7 @@ impl App {
         let mut ctx = Context {
             config,
             device,
+            graphics,
             window_target,
             running: true,
         };
@@ -130,21 +137,22 @@ impl App {
         os::run(el, |event, elwt| {
             #[allow(clippy::collapsible_match)]
             match event {
-                Event::WindowEvent { window_id, event } if window.id() == window_id =>
-                {
+                Event::WindowEvent { window_id, event } if window.id() == window_id => {
                     #[allow(clippy::single_match)]
                     match event {
                         WindowEvent::CloseRequested => game.on_exit(&mut ctx),
 
                         WindowEvent::RedrawRequested => {
                             game.on_update(&mut ctx);
+
                             ctx.device.begin_frame();
+                            ctx.graphics.set_draw_target(&ctx.window_target);
+                            ctx.graphics.set_render_pipeline(&triangle_pipeline); // todo: move this pipeline into graphics.
+
                             game.on_render(&mut ctx);
-                            ctx.device.end_frame(
-                                &mut surface,
-                                &ctx.window_target,
-                                &triangle_pipeline,
-                            )?;
+
+                            ctx.device.end_frame(&mut surface, &ctx.window_target)?;
+
                             window.pre_present_notify();
                             surface.present();
                             window.request_redraw();
@@ -180,6 +188,7 @@ pub struct Context {
     #[allow(dead_code)]
     config: AppConfig,
     device: RenderDevice,
+    graphics: Graphics,
     window_target: WindowTarget,
     running: bool,
 }
@@ -187,5 +196,19 @@ pub struct Context {
 impl Context {
     pub fn exit(&mut self) {
         self.running = false;
+    }
+}
+
+impl Context {
+    pub fn set_draw_target(&mut self, target: impl Into<DrawTarget>) {
+        self.graphics.set_draw_target(target);
+    }
+
+    pub fn set_render_pipeline(&mut self, pipeline: &RenderPipeline) {
+        self.graphics.set_render_pipeline(pipeline);
+    }
+
+    pub fn draw_filled_triangle(&mut self) {
+        self.graphics.draw_filled_triangle(&mut self.device);
     }
 }

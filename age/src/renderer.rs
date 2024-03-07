@@ -1,4 +1,8 @@
-use std::{borrow::Cow, ops::Deref, sync::Arc};
+use std::{
+    borrow::Cow,
+    ops::{Deref, Range},
+    sync::Arc,
+};
 
 use wgpu::{
     BindGroupDescriptor, BindGroupLayoutDescriptor, BindingResource, BlendState, ColorTargetState,
@@ -19,6 +23,7 @@ pub struct RenderDevice {
     adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
+    command_buffer: CommandBuffer,
 }
 
 impl RenderDevice {
@@ -81,21 +86,26 @@ impl RenderDevice {
             }
         };
 
+        let command_buffer = CommandBuffer::new();
+
         Ok(Self {
             instance,
             adapter,
             device,
             queue,
+            command_buffer,
         })
     }
 
-    pub(crate) fn begin_frame(&self) {}
+    pub(crate) fn begin_frame(&mut self) {
+        self.command_buffer.clear();
+    }
 
+    #[allow(unused_assignments)]
     pub(crate) fn end_frame(
         &mut self,
         surface: &mut WindowSurface,
         window_target: &WindowTarget,
-        triangle_pipeline: &RenderPipeline,
     ) -> AgeResult {
         let mut encoder = self
             .device
@@ -103,27 +113,51 @@ impl RenderDevice {
                 label: Some("end frame"),
             });
 
-        {
-            let view = &window_target.draw_target.color_target;
-            let mut rpass = encoder.begin_render_pass(&RenderPassDescriptor {
-                label: Some("window target"),
-                color_attachments: &[Some(RenderPassColorAttachment {
-                    view,
-                    resolve_target: None,
-                    ops: Operations {
-                        load: LoadOp::Clear(wgpu::Color::BLUE),
-                        store: StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
+        let mut rpass = None;
+        let mut target = None;
+        let mut pipeline = None;
+        for command in self.command_buffer.commands.iter() {
+            if Some(command.target.color_target.global_id()) != target {
+                target = Some(command.target.color_target.global_id());
 
-            rpass.set_pipeline(triangle_pipeline);
-            rpass.draw(0..3, 0..1);
+                let view = &window_target.draw_target.color_target;
+
+                // This assignment is unused but we need to drop the current render pass because
+                // it has an exclusive borrow of encoder.
+                rpass = None;
+
+                rpass = Some(encoder.begin_render_pass(&RenderPassDescriptor {
+                    label: Some("window target"),
+                    color_attachments: &[Some(RenderPassColorAttachment {
+                        view,
+                        resolve_target: None,
+                        ops: Operations {
+                            load: LoadOp::Clear(wgpu::Color::BLUE),
+                            store: StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                }));
+            }
+
+            let Some(pass) = rpass.as_mut() else {
+                unreachable!("render pass will always be set by this point");
+            };
+
+            if Some(command.pipeline.global_id()) != pipeline {
+                pipeline = Some(command.pipeline.global_id());
+                pass.set_pipeline(&command.pipeline);
+            }
+
+            pass.draw(0..3, 0..1);
         }
+        pipeline = None;
+        target = None;
+        rpass = None;
 
+        // Draw window target to window surface.
         {
             let view = surface.acquire()?;
             let mut rpass = encoder.begin_render_pass(&RenderPassDescriptor {
@@ -319,6 +353,10 @@ impl RenderDevice {
             shader: Arc::new(shader),
         }
     }
+
+    pub fn push_draw_command(&mut self, draw: DrawCommand) {
+        self.command_buffer.push(draw);
+    }
 }
 
 pub struct BindGroupLayoutInfo<'info> {
@@ -433,6 +471,7 @@ impl From<FilterMode> for wgpu::FilterMode {
     }
 }
 
+#[derive(Clone)]
 pub struct DrawTarget {
     color_target: TextureView,
 }
@@ -453,6 +492,12 @@ impl DrawTarget {
 
     pub fn color_target(&self) -> &TextureView {
         &self.color_target
+    }
+}
+
+impl From<&WindowTarget> for DrawTarget {
+    fn from(window_target: &WindowTarget) -> Self {
+        window_target.draw_target.clone()
     }
 }
 
@@ -783,6 +828,32 @@ impl WindowSurface {
         self.surface = None;
         self.surface_texture = None;
     }
+}
+
+struct CommandBuffer {
+    commands: Vec<DrawCommand>,
+}
+
+impl CommandBuffer {
+    fn new() -> Self {
+        Self {
+            commands: Vec::new(),
+        }
+    }
+
+    fn clear(&mut self) {
+        self.commands.clear();
+    }
+
+    fn push(&mut self, draw: DrawCommand) {
+        self.commands.push(draw);
+    }
+}
+
+pub struct DrawCommand {
+    pub target: DrawTarget,
+    pub pipeline: RenderPipeline,
+    pub vertices: Range<u32>,
 }
 
 impl From<CreateSurfaceError> for AgeError {

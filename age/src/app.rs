@@ -9,10 +9,7 @@ use winit::{
 use crate::{
     graphics::Graphics,
     os,
-    renderer::{
-        DrawTarget, PipelineLayoutInfo, RenderDevice, RenderPipeline, RenderPipelineInfo,
-        ShaderInfo, TextureFormat, WindowSurface, WindowTarget,
-    },
+    renderer::{DrawTarget, RenderDevice, RenderPipeline, WindowSurface, WindowTarget},
     AgeResult, Game,
 };
 
@@ -61,8 +58,7 @@ impl AppBuilder {
 
         let (width, height) = window.inner_size().into();
         let window_target = WindowTarget::new(width, height, &device);
-
-        let graphics = Graphics::new();
+        let graphics = Graphics::new(&device);
 
         Ok(App {
             config: self.config,
@@ -104,25 +100,6 @@ impl App {
 
         let window = Arc::new(window);
 
-        // Start - Temporary.
-        let shader = device.create_shader(&ShaderInfo {
-            label: Some("triangle"),
-            src: include_str!("shaders/triangle.wgsl"),
-        });
-        let pl = device.create_pipeline_layout(&PipelineLayoutInfo {
-            label: Some("triangle"),
-            bind_group_layouts: &[],
-        });
-        let triangle_pipeline = device.create_render_pipeline(&RenderPipelineInfo {
-            label: Some("triangle"),
-            layout: &pl,
-            shader: &shader,
-            vs_main: "vs_main",
-            fs_main: "fs_main",
-            format: TextureFormat::Rgba8Unorm,
-        });
-        // End - Temporary.
-
         let mut ctx = Context {
             config,
             device,
@@ -137,15 +114,15 @@ impl App {
         os::run(el, |event, elwt| {
             #[allow(clippy::collapsible_match)]
             match event {
-                Event::WindowEvent { window_id, event } if window.id() == window_id => {
+                Event::WindowEvent { window_id, event } if window.id() == window_id =>
+                {
                     #[allow(clippy::single_match)]
                     match event {
                         WindowEvent::CloseRequested => game.on_exit(&mut ctx),
 
                         WindowEvent::RedrawRequested => {
                             ctx.device.begin_frame();
-                            ctx.graphics.set_draw_target(&ctx.window_target);
-                            ctx.graphics.set_render_pipeline(&triangle_pipeline); // todo: move this pipeline into graphics.
+                            ctx.graphics.begin_frame(&ctx.window_target);
 
                             game.on_tick(&mut ctx);
 

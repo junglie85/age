@@ -1,18 +1,21 @@
 use std::{
     borrow::Cow,
+    num::NonZeroU64,
     ops::{Deref, Range},
     sync::Arc,
 };
 
+use bytemuck::cast_slice;
 use wgpu::{
-    BindGroupDescriptor, BindGroupLayoutDescriptor, BindingResource, BlendState, ColorTargetState,
-    ColorWrites, CommandEncoderDescriptor, CreateSurfaceError, Extent3d, Face, FragmentState,
-    FrontFace, LoadOp, MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode,
-    PresentMode, PrimitiveState, PrimitiveTopology, RenderPassColorAttachment,
-    RenderPassDescriptor, RenderPipelineDescriptor, SamplerDescriptor, ShaderModuleDescriptor,
-    ShaderSource, ShaderStages, StoreOp, Surface, SurfaceConfiguration, SurfaceError,
-    SurfaceTexture, TextureDescriptor, TextureDimension, TextureSampleType, TextureUsages,
-    TextureViewDescriptor, TextureViewDimension, VertexState,
+    BindGroupDescriptor, BindGroupLayoutDescriptor, BindingResource, BlendState, BufferBindingType,
+    BufferDescriptor, BufferSize, BufferUsages, ColorTargetState, ColorWrites,
+    CommandEncoderDescriptor, CreateSurfaceError, Extent3d, Face, FragmentState, FrontFace, LoadOp,
+    MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode, PresentMode,
+    PrimitiveState, PrimitiveTopology, RenderPassColorAttachment, RenderPassDescriptor,
+    RenderPipelineDescriptor, SamplerDescriptor, ShaderModuleDescriptor, ShaderSource,
+    ShaderStages, StoreOp, Surface, SurfaceConfiguration, SurfaceError, SurfaceTexture,
+    TextureDescriptor, TextureDimension, TextureSampleType, TextureUsages, TextureViewDescriptor,
+    TextureViewDimension, VertexState,
 };
 use winit::window::Window;
 
@@ -180,6 +183,9 @@ impl RenderDevice {
             let resource = match *entry {
                 Binding::Sampler { sampler } => BindingResource::Sampler(sampler),
                 Binding::Texture { texture_view } => BindingResource::TextureView(texture_view),
+                Binding::Uniform { buffer } => {
+                    BindingResource::Buffer(buffer.as_entire_buffer_binding())
+                }
             };
 
             entries.push(wgpu::BindGroupEntry {
@@ -210,6 +216,12 @@ impl RenderDevice {
                     view_dimension: TextureViewDimension::D2,
                     multisampled: sample_count > 1,
                 },
+
+                BindingType::Uniform { min_size } => wgpu::BindingType::Buffer {
+                    ty: BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: BufferSize::new(min_size),
+                },
             };
 
             entries.push(wgpu::BindGroupLayoutEntry {
@@ -229,6 +241,24 @@ impl RenderDevice {
 
         BindGroupLayout {
             layout: Arc::new(layout),
+        }
+    }
+
+    pub fn create_buffer(&self, info: &BufferInfo) -> Buffer {
+        let mut usage = BufferUsages::COPY_DST;
+        usage |= match info.ty {
+            BufferType::Uniform => BufferUsages::UNIFORM,
+        };
+
+        let buffer = self.device.create_buffer(&BufferDescriptor {
+            label: info.label,
+            size: info.size,
+            usage,
+            mapped_at_creation: false,
+        });
+
+        Buffer {
+            buffer: Arc::new(buffer),
         }
     }
 
@@ -346,6 +376,18 @@ impl RenderDevice {
     pub fn push_draw_command(&mut self, draw: DrawCommand) {
         self.command_buffer.push(draw);
     }
+
+    pub fn write_buffer<T: bytemuck::Pod + bytemuck::Zeroable>(&self, buffer: &Buffer, data: &[T]) {
+        let Some(size) = NonZeroU64::new(std::mem::size_of::<T>() as u64 * data.len() as u64)
+        else {
+            eprintln!("attempted to write zero bytes to buffer");
+            return;
+        };
+
+        if let Some(mut buf) = self.queue.write_buffer_with(buffer, 0, size) {
+            buf.copy_from_slice(cast_slice(data));
+        }
+    }
 }
 
 pub struct BindGroupLayoutInfo<'info> {
@@ -372,7 +414,7 @@ pub struct BindGroupInfo<'info> {
     pub entries: &'info [Binding<'info>],
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BindGroup {
     bg: Arc<wgpu::BindGroup>,
 }
@@ -395,12 +437,44 @@ impl PartialEq for BindGroup {
 pub enum Binding<'a> {
     Sampler { sampler: &'a Sampler },
     Texture { texture_view: &'a TextureView },
+    Uniform { buffer: &'a Buffer },
 }
 
 #[derive(Debug, Clone)]
 pub enum BindingType {
     Sampler,
     Texture { sample_count: u32 },
+    Uniform { min_size: u64 },
+}
+
+pub struct BufferInfo<'info> {
+    pub label: Option<&'info str>,
+    pub size: u64,
+    pub ty: BufferType,
+}
+
+#[derive(Debug, Clone)]
+pub struct Buffer {
+    buffer: Arc<wgpu::Buffer>,
+}
+
+impl Deref for Buffer {
+    type Target = wgpu::Buffer;
+
+    fn deref(&self) -> &Self::Target {
+        &self.buffer
+    }
+}
+
+impl PartialEq for Buffer {
+    fn eq(&self, other: &Self) -> bool {
+        self.buffer.global_id() == other.buffer.global_id()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BufferType {
+    Uniform,
 }
 
 pub struct SamplerInfo<'info> {

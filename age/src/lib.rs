@@ -6,6 +6,7 @@ mod renderer;
 
 pub use app::{App, AppBuilder, Context};
 pub use error::{AgeError, AgeResult};
+pub use graphics::Camera;
 
 pub trait Game {
     fn on_start(&mut self, _ctx: &mut Context) {}

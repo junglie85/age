@@ -10,7 +10,7 @@ use crate::{
     graphics::Graphics,
     os,
     renderer::{DrawTarget, RenderDevice, RenderPipeline, WindowSurface, WindowTarget},
-    AgeResult, Game,
+    AgeResult, Camera, Game,
 };
 
 pub(crate) struct AppConfig {
@@ -59,7 +59,13 @@ impl AppBuilder {
 
         let (width, height) = window.inner_size().into();
         let window_target = WindowTarget::new(width, height, &device);
-        let graphics = Graphics::new(&device);
+        let graphics = Graphics::new(
+            0.0,
+            self.config.width as f32,
+            self.config.height as f32,
+            0.0,
+            &device,
+        );
 
         Ok(App {
             config: self.config,
@@ -213,6 +219,15 @@ impl Context {
 }
 
 impl Context {
+    pub fn create_camera(&self, left: f32, right: f32, bottom: f32, top: f32) -> Camera {
+        self.graphics
+            .create_camera(left, right, bottom, top, &self.device)
+    }
+
+    pub fn default_camera(&self) -> &Camera {
+        self.graphics.default_camera()
+    }
+
     pub fn set_draw_target(&mut self, target: impl Into<DrawTarget>) {
         self.graphics.set_draw_target(target);
     }

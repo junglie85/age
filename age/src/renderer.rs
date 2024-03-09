@@ -32,6 +32,8 @@ pub struct RenderDevice {
 impl RenderDevice {
     pub const MAX_BIND_GROUPS: usize = 2;
     pub const EMPTY_BIND_GROUP: Option<BindGroup> = None;
+    pub const MAX_VERTEX_BUFFERS: usize = 2;
+    pub const EMPTY_VERTEX_BUFFER: Option<Buffer> = None;
 
     pub(crate) fn new() -> AgeResult<Self> {
         let flags = if cfg!(debug_assertions) {
@@ -116,22 +118,30 @@ impl RenderDevice {
                 label: Some("end frame"),
             });
 
-        let mut rpass = None;
-        let mut target = None;
-        let mut bind_groups = [Self::EMPTY_BIND_GROUP; Self::MAX_BIND_GROUPS];
-        let mut pipeline = None;
+        let mut current_rpass = None;
+        let mut current_target = None;
+        let mut current_bind_groups = [Self::EMPTY_BIND_GROUP; Self::MAX_BIND_GROUPS];
+        let mut current_pipeline = None;
+        let mut current_vertex_buffers = [Self::EMPTY_VERTEX_BUFFER; Self::MAX_VERTEX_BUFFERS];
 
-        for command in self.command_buffer.commands.iter() {
-            if Some(&command.target.color_target) != target.as_ref() {
-                target = Some(command.target.color_target.clone());
+        for DrawCommand {
+            target,
+            bind_groups,
+            pipeline,
+            vertex_buffers,
+            vertices,
+        } in self.command_buffer.commands.iter()
+        {
+            if Some(&target.color_target) != current_target.as_ref() {
+                current_target = Some(target.color_target.clone());
 
-                let view = &command.target.color_target;
+                let view = &target.color_target;
 
                 // This assignment is unused but we need to drop the current render pass because
                 // it has an exclusive borrow of encoder.
-                rpass = None;
+                current_rpass = None;
 
-                rpass = Some(encoder.begin_render_pass(&RenderPassDescriptor {
+                current_rpass = Some(encoder.begin_render_pass(&RenderPassDescriptor {
                     label: Some("window target"),
                     color_attachments: &[Some(RenderPassColorAttachment {
                         view,
@@ -147,31 +157,41 @@ impl RenderDevice {
                 }));
             }
 
-            let Some(pass) = rpass.as_mut() else {
+            let Some(pass) = current_rpass.as_mut() else {
                 unreachable!("render pass will always be set by this point");
             };
 
-            if Some(&command.pipeline) != pipeline.as_ref() {
-                pipeline = Some(command.pipeline.clone());
-                pass.set_pipeline(&command.pipeline);
+            if Some(pipeline) != current_pipeline.as_ref() {
+                current_pipeline = Some(pipeline.clone());
+                pass.set_pipeline(pipeline);
             }
 
-            for (i, bind_group) in command.bind_groups.iter().enumerate() {
-                if &bind_groups[i] != bind_group {
-                    bind_groups[i] = bind_group.clone();
+            for (i, bind_group) in bind_groups.iter().enumerate() {
+                if &current_bind_groups[i] != bind_group {
+                    current_bind_groups[i] = bind_group.clone();
                     if let Some(bg) = bind_group.as_ref() {
                         pass.set_bind_group(0, bg, &[]);
                     }
                 }
             }
 
-            pass.draw(0..3, 0..1);
+            for (i, buffer) in vertex_buffers.iter().enumerate() {
+                if &current_vertex_buffers[i] != buffer {
+                    current_vertex_buffers[i] = buffer.clone();
+                    if let Some(buf) = buffer.as_ref() {
+                        pass.set_vertex_buffer(i as u32, buf.slice(..));
+                    }
+                }
+            }
+
+            pass.draw(vertices.clone(), 0..1);
         }
 
-        pipeline = None;
-        bind_groups.iter_mut().for_each(|bg| *bg = None);
-        target = None;
-        rpass = None;
+        current_vertex_buffers.iter_mut().for_each(|b| *b = None);
+        current_pipeline = None;
+        current_bind_groups.iter_mut().for_each(|bg| *bg = None);
+        current_target = None;
+        current_rpass = None;
 
         self.queue.submit([encoder.finish()]);
         self.command_buffer.clear()
@@ -248,6 +268,7 @@ impl RenderDevice {
         let mut usage = BufferUsages::COPY_DST;
         usage |= match info.ty {
             BufferType::Uniform => BufferUsages::UNIFORM,
+            BufferType::Vertex => BufferUsages::VERTEX,
         };
 
         let buffer = self.device.create_buffer(&BufferDescriptor {
@@ -283,6 +304,36 @@ impl RenderDevice {
     }
 
     pub fn create_render_pipeline(&self, info: &RenderPipelineInfo) -> RenderPipeline {
+        let attribs_len = info.buffers.iter().map(|b| b.formats.len()).sum();
+        let mut attributes = Vec::with_capacity(attribs_len);
+        let mut offset = 0;
+        let mut shader_location = 0;
+        for buffer in info.buffers.iter() {
+            for format in buffer.formats.iter() {
+                attributes.push(wgpu::VertexAttribute {
+                    format: format.into(),
+                    offset,
+                    shader_location,
+                });
+
+                offset += 1;
+                shader_location += 1;
+            }
+        }
+
+        let mut buffers = Vec::with_capacity(info.buffers.len());
+        let mut start = 0;
+        for buffer in info.buffers.iter() {
+            let end = buffer.formats.len();
+            buffers.push(wgpu::VertexBufferLayout {
+                array_stride: buffer.stride,
+                step_mode: buffer.ty.into(),
+                attributes: &attributes[start..end],
+            });
+
+            start += end;
+        }
+
         let pipeline = self
             .device
             .create_render_pipeline(&RenderPipelineDescriptor {
@@ -291,7 +342,7 @@ impl RenderDevice {
                 vertex: VertexState {
                     module: info.shader,
                     entry_point: info.vs_main,
-                    buffers: &[],
+                    buffers: &buffers,
                 },
                 primitive: PrimitiveState {
                     topology: PrimitiveTopology::TriangleList,
@@ -475,6 +526,7 @@ impl PartialEq for Buffer {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BufferType {
     Uniform,
+    Vertex,
 }
 
 pub struct SamplerInfo<'info> {
@@ -632,6 +684,7 @@ impl WindowTarget {
             fs_main: "fs_main",
             // This is the format of the window surface, not the draw target.
             format: TextureFormat::Bgra8Unorm,
+            buffers: &[],
         });
 
         let (draw_target, bg) =
@@ -659,6 +712,7 @@ impl WindowTarget {
                 vs_main: "vs_main",
                 fs_main: "fs_main",
                 format: surface.format(),
+                buffers: &[],
             });
         }
 
@@ -716,6 +770,7 @@ impl WindowTarget {
             target: surface.try_into()?,
             bind_groups,
             pipeline: self.pipeline.clone(),
+            vertex_buffers: [RenderDevice::EMPTY_VERTEX_BUFFER; RenderDevice::MAX_VERTEX_BUFFERS],
             vertices: 0..3,
         });
 
@@ -754,6 +809,7 @@ pub struct RenderPipelineInfo<'info> {
     pub vs_main: &'info str,
     pub fs_main: &'info str,
     pub format: TextureFormat,
+    pub buffers: &'info [VertexBufferLayout],
 }
 
 #[derive(Debug, Clone)]
@@ -1049,6 +1105,7 @@ pub struct DrawCommand {
     pub target: DrawTarget,
     pub bind_groups: [Option<BindGroup>; RenderDevice::MAX_BIND_GROUPS],
     pub pipeline: RenderPipeline,
+    pub vertex_buffers: [Option<Buffer>; RenderDevice::MAX_VERTEX_BUFFERS],
     pub vertices: Range<u32>,
 }
 
@@ -1061,5 +1118,44 @@ impl From<CreateSurfaceError> for AgeError {
 impl From<SurfaceError> for AgeError {
     fn from(err: SurfaceError) -> Self {
         AgeError::new("failed to acquire window surface texture").with_source(err)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct VertexBufferLayout {
+    pub stride: u64,
+    pub ty: VertexType,
+    pub formats: &'static [VertexFormat],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum VertexType {
+    Vertex,
+}
+
+impl From<VertexType> for wgpu::VertexStepMode {
+    fn from(ty: VertexType) -> Self {
+        match ty {
+            VertexType::Vertex => wgpu::VertexStepMode::Vertex,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum VertexFormat {
+    Float32x2,
+}
+
+impl VertexFormat {
+    pub fn size(&self) -> u64 {
+        Into::<wgpu::VertexFormat>::into(self).size()
+    }
+}
+
+impl From<&VertexFormat> for wgpu::VertexFormat {
+    fn from(format: &VertexFormat) -> Self {
+        match *format {
+            VertexFormat::Float32x2 => wgpu::VertexFormat::Float32x2,
+        }
     }
 }

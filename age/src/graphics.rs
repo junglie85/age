@@ -7,10 +7,10 @@ use age_math::{v2, Mat4, Vec2};
 use bytemuck::{Pod, Zeroable};
 
 use crate::renderer::{
-    BindGroup, BindGroupInfo, BindGroupLayout, BindGroupLayoutInfo, Binding, BindingType, Buffer,
-    BufferInfo, BufferType, DrawCommand, DrawTarget, PipelineLayoutInfo, RenderDevice,
-    RenderPipeline, RenderPipelineInfo, ShaderInfo, TextureFormat, VertexBufferLayout,
-    VertexFormat, VertexType,
+    self, BindGroup, BindGroupInfo, BindGroupLayout, BindGroupLayoutInfo, Binding, BindingType,
+    Buffer, BufferInfo, BufferType, DrawCommand, DrawTarget, IndexFormat, IndexedDraw,
+    PipelineLayoutInfo, RenderDevice, RenderPipeline, RenderPipelineInfo, ShaderInfo,
+    TextureFormat, VertexBufferLayout, VertexFormat, VertexType,
 };
 
 pub struct Graphics {
@@ -110,13 +110,20 @@ impl Graphics {
             [RenderDevice::EMPTY_VERTEX_BUFFER; RenderDevice::MAX_VERTEX_BUFFERS];
         vertex_buffers[0] = Some(self.meshes.triangle.vbo.clone());
 
+        let indexed_draw = Some(IndexedDraw {
+            buffer: self.meshes.triangle.ibo.clone(),
+            format: IndexFormat::Uint16,
+            indices: 0..self.meshes.triangle.indices as u32,
+        });
+
+        // todo: this is pretty ugly, can we Default DrawCommand?
         device.push_draw_command(DrawCommand {
             target: target.clone(),
-            // todo: this is pretty ugly, can we Default DrawCommand?
             bind_groups,
             pipeline: pipeline.clone(),
             vertex_buffers,
             vertices: 0..3,
+            indexed_draw,
         })
     }
 
@@ -267,18 +274,44 @@ const fn v(pos: [f32; 2]) -> Vertex {
 
 struct Mesh {
     vbo: Buffer,
+    ibo: Buffer,
+    indices: usize,
 }
 
 impl Mesh {
-    fn new(vertices: &[Vertex], label: Option<&str>, device: &RenderDevice) -> Self {
+    fn new(
+        vertices: &[Vertex],
+        indices: &[u16],
+        label: Option<&str>,
+        device: &RenderDevice,
+    ) -> Self {
+        let mut aligned_indices = indices.to_vec();
+        let current_len = aligned_indices.len();
+        let required_len =
+            renderer::align_to(current_len, RenderDevice::COPY_BUFFER_ALIGNMENT as usize);
+        if required_len != current_len {
+            aligned_indices.resize(required_len, 0);
+        }
+
         let vbo = device.create_buffer(&BufferInfo {
             label,
             size: std::mem::size_of::<Vertex>() as u64 * vertices.len() as u64,
             ty: BufferType::Vertex,
         });
-        device.write_buffer(&vbo, vertices);
+        let ibo = device.create_buffer(&BufferInfo {
+            label,
+            size: std::mem::size_of::<u16>() as u64 * aligned_indices.len() as u64,
+            ty: BufferType::Index,
+        });
 
-        Self { vbo }
+        device.write_buffer(&vbo, vertices);
+        device.write_buffer(&ibo, indices);
+
+        Self {
+            vbo,
+            ibo,
+            indices: indices.len(),
+        }
     }
 }
 
@@ -288,9 +321,15 @@ struct Meshes {
 
 impl Meshes {
     const TRIANGLE: [Vertex; 3] = [v([0.0, 0.0]), v([200.0, 200.0]), v([400.0, 0.0])];
+    const TRIANGLE_INDICES: [u16; 6] = [0, 1, 2, 0, 2, 3];
 
     fn new(device: &RenderDevice) -> Self {
-        let triangle = Mesh::new(&Self::TRIANGLE, Some("triangle"), device);
+        let triangle = Mesh::new(
+            &Self::TRIANGLE,
+            &Self::TRIANGLE_INDICES,
+            Some("triangle"),
+            device,
+        );
 
         Self { triangle }
     }

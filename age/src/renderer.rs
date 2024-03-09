@@ -1,7 +1,7 @@
 use std::{
     borrow::Cow,
     num::NonZeroU64,
-    ops::{Deref, Range},
+    ops::{Add, Deref, Range, Rem, Sub},
     sync::Arc,
 };
 
@@ -30,6 +30,7 @@ pub struct RenderDevice {
 }
 
 impl RenderDevice {
+    pub const COPY_BUFFER_ALIGNMENT: u64 = wgpu::COPY_BUFFER_ALIGNMENT;
     pub const MAX_BIND_GROUPS: usize = 2;
     pub const EMPTY_BIND_GROUP: Option<BindGroup> = None;
     pub const MAX_VERTEX_BUFFERS: usize = 2;
@@ -123,6 +124,7 @@ impl RenderDevice {
         let mut current_bind_groups = [Self::EMPTY_BIND_GROUP; Self::MAX_BIND_GROUPS];
         let mut current_pipeline = None;
         let mut current_vertex_buffers = [Self::EMPTY_VERTEX_BUFFER; Self::MAX_VERTEX_BUFFERS];
+        let mut current_index_buffer: Option<Buffer> = None;
 
         for DrawCommand {
             target,
@@ -130,6 +132,7 @@ impl RenderDevice {
             pipeline,
             vertex_buffers,
             vertices,
+            indexed_draw,
         } in self.command_buffer.commands.iter()
         {
             if Some(&target.color_target) != current_target.as_ref() {
@@ -184,9 +187,24 @@ impl RenderDevice {
                 }
             }
 
-            pass.draw(vertices.clone(), 0..1);
+            if let Some(IndexedDraw {
+                buffer,
+                format,
+                indices,
+            }) = indexed_draw
+            {
+                if Some(buffer) != current_index_buffer.as_ref() {
+                    current_index_buffer = Some(buffer.clone());
+                    pass.set_index_buffer(buffer.slice(..), format.into());
+                }
+
+                pass.draw_indexed(indices.clone(), 0, 0..1);
+            } else {
+                pass.draw(vertices.clone(), 0..1);
+            }
         }
 
+        current_index_buffer = None;
         current_vertex_buffers.iter_mut().for_each(|b| *b = None);
         current_pipeline = None;
         current_bind_groups.iter_mut().for_each(|bg| *bg = None);
@@ -267,6 +285,7 @@ impl RenderDevice {
     pub fn create_buffer(&self, info: &BufferInfo) -> Buffer {
         let mut usage = BufferUsages::COPY_DST;
         usage |= match info.ty {
+            BufferType::Index => BufferUsages::INDEX,
             BufferType::Uniform => BufferUsages::UNIFORM,
             BufferType::Vertex => BufferUsages::VERTEX,
         };
@@ -525,6 +544,7 @@ impl PartialEq for Buffer {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BufferType {
+    Index,
     Uniform,
     Vertex,
 }
@@ -772,6 +792,7 @@ impl WindowTarget {
             pipeline: self.pipeline.clone(),
             vertex_buffers: [RenderDevice::EMPTY_VERTEX_BUFFER; RenderDevice::MAX_VERTEX_BUFFERS],
             vertices: 0..3,
+            indexed_draw: None,
         });
 
         Ok(())
@@ -1107,6 +1128,13 @@ pub struct DrawCommand {
     pub pipeline: RenderPipeline,
     pub vertex_buffers: [Option<Buffer>; RenderDevice::MAX_VERTEX_BUFFERS],
     pub vertices: Range<u32>,
+    pub indexed_draw: Option<IndexedDraw>,
+}
+
+pub struct IndexedDraw {
+    pub buffer: Buffer,
+    pub format: IndexFormat,
+    pub indices: Range<u32>,
 }
 
 impl From<CreateSurfaceError> for AgeError {
@@ -1158,4 +1186,26 @@ impl From<&VertexFormat> for wgpu::VertexFormat {
             VertexFormat::Float32x2 => wgpu::VertexFormat::Float32x2,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum IndexFormat {
+    Uint16,
+    Uint32,
+}
+
+impl From<&IndexFormat> for wgpu::IndexFormat {
+    fn from(format: &IndexFormat) -> Self {
+        match *format {
+            IndexFormat::Uint16 => wgpu::IndexFormat::Uint16,
+            IndexFormat::Uint32 => wgpu::IndexFormat::Uint32,
+        }
+    }
+}
+
+pub fn align_to<T>(value: T, alignment: T) -> T
+where
+    T: Add<Output = T> + Copy + Default + PartialEq<T> + Rem<Output = T> + Sub<Output = T>,
+{
+    wgpu::util::align_to(value, alignment)
 }

@@ -1,4 +1,5 @@
-use age::{AgeResult, App, Context, Game};
+use age::{AgeResult, App, Color, Context, Game};
+use age_math::v2;
 
 struct Sandbox {}
 
@@ -14,7 +15,12 @@ impl Game for Sandbox {
     fn on_tick(&mut self, ctx: &mut Context) {
         // ctx.set_draw_target(target);
         // ctx.set_render_pipeline(pipeline);
-        ctx.draw_filled_triangle();
+        let position = v2(200.0, 100.0);
+        let origin = v2(200.0, 100.0);
+        let rotation = 0.0_f32.to_radians();
+        let scale = v2(400.0, 200.0);
+        let color = Color::YELLOW;
+        ctx.draw_filled_triangle(position, rotation, scale, origin, color);
     }
 
     fn on_stop(&mut self, _ctx: &mut Context) {}

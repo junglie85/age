@@ -91,7 +91,15 @@ impl Graphics {
         self.draw_state.pipeline = Some(pipeline.clone());
     }
 
-    pub fn draw_filled_triangle(&mut self, device: &mut RenderDevice) {
+    pub fn draw_filled_triangle(
+        &mut self,
+        position: Vec2,
+        rotation: f32,
+        scale: Vec2,
+        origin: Vec2,
+        color: Color,
+        device: &mut RenderDevice,
+    ) {
         let Some(target) = self.draw_state.target.as_ref() else {
             panic!("draw target is not set");
         };
@@ -107,16 +115,11 @@ impl Graphics {
         let mut bind_groups = [RenderDevice::EMPTY_BIND_GROUP; RenderDevice::MAX_BIND_GROUPS];
         bind_groups[0] = Some(camera.clone());
 
-        let pos = v2(200.0, 100.0);
-        let origin = v2(200.0, 100.0);
-        let rotation = 0.0_f32.to_radians();
-        let scale = v2(400.0, 200.0);
-        let model = Mat4::from_translation(pos.extend(0.0) - origin.extend(0.0))
+        let model = Mat4::from_translation(position.extend(0.0) - origin.extend(0.0))
             * Mat4::from_translation(origin.extend(0.0))
             * Mat4::from_rotation_z(rotation)
             * Mat4::from_translation(-origin.extend(0.0))
             * Mat4::from_scale(scale.extend(1.0));
-        let color = Color::YELLOW;
         let push_constant = PushConstant {
             model: model.to_cols_array(),
             color: color.to_array_f32(),

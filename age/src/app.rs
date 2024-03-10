@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use age_math::Vec2;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{EventLoop, EventLoopProxy},
@@ -9,7 +10,7 @@ use winit::{
 use crate::{
     graphics::Graphics,
     os,
-    renderer::{DrawTarget, RenderDevice, RenderPipeline, WindowSurface, WindowTarget},
+    renderer::{Color, DrawTarget, RenderDevice, RenderPipeline, WindowSurface, WindowTarget},
     AgeResult, Camera, Game,
 };
 
@@ -236,7 +237,21 @@ impl Context {
         self.graphics.set_render_pipeline(pipeline);
     }
 
-    pub fn draw_filled_triangle(&mut self) {
-        self.graphics.draw_filled_triangle(&mut self.device);
+    pub fn draw_filled_triangle(
+        &mut self,
+        position: Vec2,
+        rotation: f32,
+        scale: Vec2,
+        origin: Vec2,
+        color: Color,
+    ) {
+        self.graphics.draw_filled_triangle(
+            position,
+            rotation,
+            scale,
+            origin,
+            color,
+            &mut self.device,
+        );
     }
 }

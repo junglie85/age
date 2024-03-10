@@ -12,12 +12,19 @@ struct VsOut {
     @location(0) color: vec4<f32>,
 }
 
+
+struct PushConstant {
+    model: mat4x4<f32>,
+}
+
 @group(0) @binding(0)
 var<uniform> r_camera: Camera;
 
+var<push_constant> r_pc: PushConstant;
+
 @vertex
 fn vs_main(vertex: Vertex) -> VsOut {
-    let position = r_camera.view_proj * vec4(vertex.position, 0.0, 1.0);
+    let position = r_camera.view_proj * r_pc.model * vec4(vertex.position, 0.0, 1.0);
     let color = vec4(0.0, 1.0, 0.0, 1.0);
 
     return VsOut(position, color);

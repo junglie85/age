@@ -61,10 +61,11 @@ impl RenderDevice {
                 }
             };
 
-        let required_features = wgpu::Features::empty();
+        let required_features = wgpu::Features::PUSH_CONSTANTS;
         assert!(adapter.features().contains(required_features));
 
         let required_limits = wgpu::Limits {
+            max_push_constant_size: 128,
             ..Default::default()
         };
         let mut in_limits = true;
@@ -130,6 +131,7 @@ impl RenderDevice {
             target,
             bind_groups,
             pipeline,
+            push_constant_data,
             vertex_buffers,
             vertices,
             indexed_draw,
@@ -176,6 +178,10 @@ impl RenderDevice {
                         pass.set_bind_group(0, bg, &[]);
                     }
                 }
+            }
+
+            if let Some(data) = push_constant_data {
+                pass.set_push_constants(ShaderStages::VERTEX_FRAGMENT, 0, data);
             }
 
             for (i, buffer) in vertex_buffers.iter().enumerate() {
@@ -309,12 +315,21 @@ impl RenderDevice {
             .map(|bgl| &*bgl.layout)
             .collect::<Vec<_>>();
 
+        let pcrs = info
+            .push_constant_ranges
+            .iter()
+            .map(|&range| wgpu::PushConstantRange {
+                stages: ShaderStages::VERTEX_FRAGMENT,
+                range: range.clone(),
+            })
+            .collect::<Vec<_>>();
+
         let layout = self
             .device
             .create_pipeline_layout(&PipelineLayoutDescriptor {
                 label: info.label,
                 bind_group_layouts: &bgls,
-                push_constant_ranges: &[],
+                push_constant_ranges: &pcrs,
             });
 
         PipelineLayout {
@@ -695,6 +710,7 @@ impl WindowTarget {
         let pl = device.create_pipeline_layout(&PipelineLayoutInfo {
             label: Some("fullscreen"),
             bind_group_layouts: &[&bgl],
+            push_constant_ranges: &[],
         });
         let pipeline = device.create_render_pipeline(&RenderPipelineInfo {
             label: Some("fullscreen"),
@@ -790,6 +806,7 @@ impl WindowTarget {
             target: surface.try_into()?,
             bind_groups,
             pipeline: self.pipeline.clone(),
+            push_constant_data: None,
             vertex_buffers: [RenderDevice::EMPTY_VERTEX_BUFFER; RenderDevice::MAX_VERTEX_BUFFERS],
             vertices: 0..3,
             indexed_draw: None,
@@ -802,6 +819,7 @@ impl WindowTarget {
 pub struct PipelineLayoutInfo<'info> {
     pub label: Option<&'info str>,
     pub bind_group_layouts: &'info [&'info BindGroupLayout],
+    pub push_constant_ranges: &'info [&'info Range<u32>],
 }
 
 #[derive(Debug, Clone)]
@@ -1126,6 +1144,7 @@ pub struct DrawCommand {
     pub target: DrawTarget,
     pub bind_groups: [Option<BindGroup>; RenderDevice::MAX_BIND_GROUPS],
     pub pipeline: RenderPipeline,
+    pub push_constant_data: Option<Vec<u8>>,
     pub vertex_buffers: [Option<Buffer>; RenderDevice::MAX_VERTEX_BUFFERS],
     pub vertices: Range<u32>,
     pub indexed_draw: Option<IndexedDraw>,

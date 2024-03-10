@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use age_math::{v2, Mat4, Vec2};
-use bytemuck::{Pod, Zeroable};
+use bytemuck::{cast_slice, Pod, Zeroable};
 
 use crate::renderer::{
     self, BindGroup, BindGroupInfo, BindGroupLayout, BindGroupLayoutInfo, Binding, BindingType,
@@ -38,6 +38,7 @@ impl Graphics {
         let pl = device.create_pipeline_layout(&PipelineLayoutInfo {
             label: Some("triangle"),
             bind_group_layouts: &[&camera_bgl],
+            push_constant_ranges: &[&(0..std::mem::size_of::<Mat4>() as u32)], // todo: model matrix, color
         });
         let triangle_pipeline = device.create_render_pipeline(&RenderPipelineInfo {
             label: Some("triangle"),
@@ -106,6 +107,17 @@ impl Graphics {
         let mut bind_groups = [RenderDevice::EMPTY_BIND_GROUP; RenderDevice::MAX_BIND_GROUPS];
         bind_groups[0] = Some(camera.clone());
 
+        let pos = v2(200.0, 100.0);
+        let origin = v2(200.0, 100.0);
+        let rotation = 0.0_f32.to_radians();
+        let scale = v2(400.0, 200.0);
+        let model = Mat4::from_translation(pos.extend(0.0) - origin.extend(0.0))
+            * Mat4::from_translation(origin.extend(0.0))
+            * Mat4::from_rotation_z(rotation)
+            * Mat4::from_translation(-origin.extend(0.0))
+            * Mat4::from_scale(scale.extend(1.0));
+        let push_constants = Some(cast_slice(&model.to_cols_array()).to_vec());
+
         let mut vertex_buffers =
             [RenderDevice::EMPTY_VERTEX_BUFFER; RenderDevice::MAX_VERTEX_BUFFERS];
         vertex_buffers[0] = Some(self.meshes.triangle.vbo.clone());
@@ -121,6 +133,7 @@ impl Graphics {
             target: target.clone(),
             bind_groups,
             pipeline: pipeline.clone(),
+            push_constant_data: push_constants,
             vertex_buffers,
             vertices: 0..3,
             indexed_draw,
@@ -320,7 +333,7 @@ struct Meshes {
 }
 
 impl Meshes {
-    const TRIANGLE: [Vertex; 3] = [v([0.0, 0.0]), v([200.0, 200.0]), v([400.0, 0.0])];
+    const TRIANGLE: [Vertex; 3] = [v([0.0, 0.0]), v([0.5, 1.0]), v([1.0, 0.0])];
     const TRIANGLE_INDICES: [u16; 6] = [0, 1, 2, 0, 2, 3];
 
     fn new(device: &RenderDevice) -> Self {

@@ -8,7 +8,7 @@ use bytemuck::{cast_slice, Pod, Zeroable};
 
 use crate::renderer::{
     self, BindGroup, BindGroupInfo, BindGroupLayout, BindGroupLayoutInfo, Binding, BindingType,
-    Buffer, BufferInfo, BufferType, DrawCommand, DrawTarget, IndexFormat, IndexedDraw,
+    Buffer, BufferInfo, BufferType, Color, DrawCommand, DrawTarget, IndexFormat, IndexedDraw,
     PipelineLayoutInfo, RenderDevice, RenderPipeline, RenderPipelineInfo, ShaderInfo,
     TextureFormat, VertexBufferLayout, VertexFormat, VertexType,
 };
@@ -38,7 +38,7 @@ impl Graphics {
         let pl = device.create_pipeline_layout(&PipelineLayoutInfo {
             label: Some("triangle"),
             bind_group_layouts: &[&camera_bgl],
-            push_constant_ranges: &[&(0..std::mem::size_of::<Mat4>() as u32)], // todo: model matrix, color
+            push_constant_ranges: &[&(0..std::mem::size_of::<PushConstant>() as u32)],
         });
         let triangle_pipeline = device.create_render_pipeline(&RenderPipelineInfo {
             label: Some("triangle"),
@@ -116,7 +116,12 @@ impl Graphics {
             * Mat4::from_rotation_z(rotation)
             * Mat4::from_translation(-origin.extend(0.0))
             * Mat4::from_scale(scale.extend(1.0));
-        let push_constants = Some(cast_slice(&model.to_cols_array()).to_vec());
+        let color = Color::YELLOW;
+        let push_constant = PushConstant {
+            model: model.to_cols_array(),
+            color: color.to_array_f32(),
+        };
+        let push_constant_data = Some(cast_slice(&[push_constant]).to_vec());
 
         let mut vertex_buffers =
             [RenderDevice::EMPTY_VERTEX_BUFFER; RenderDevice::MAX_VERTEX_BUFFERS];
@@ -129,11 +134,12 @@ impl Graphics {
         });
 
         // todo: this is pretty ugly, can we Default DrawCommand?
+        // todo: push constants is a vec allocation each time. Can't be Any because need Pod + Zeroable. Can't be Pod + Zeroable because they need Sized, so can't be a trait object. Can allocate in command buffer then reference, but get's complicated if we ever want to combine more than one command buffer. Plus we potentially end up with lifetimes everywhere. Yay Rust!
         device.push_draw_command(DrawCommand {
             target: target.clone(),
             bind_groups,
             pipeline: pipeline.clone(),
-            push_constant_data: push_constants,
+            push_constant_data,
             vertex_buffers,
             vertices: 0..3,
             indexed_draw,
@@ -263,6 +269,13 @@ impl PartialEq for Camera {
             && self.bg == other.bg
             && self.dirty.load(Ordering::Relaxed) == other.dirty.load(Ordering::Relaxed)
     }
+}
+
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+#[repr(C)]
+pub struct PushConstant {
+    pub model: [f32; 16],
+    pub color: [f32; 4],
 }
 
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]

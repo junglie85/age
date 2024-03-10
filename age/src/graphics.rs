@@ -22,10 +22,13 @@ pub struct Graphics {
 }
 
 impl Graphics {
+    pub const VERTEX_TYPE_FILL: f32 = 0.5;
+    pub const VERTEX_TYPE_OUTLINE: f32 = 1.5;
+
     pub(crate) fn new(left: f32, right: f32, bottom: f32, top: f32, device: &RenderDevice) -> Self {
         let shader = device.create_shader(&ShaderInfo {
-            label: Some("triangle"),
-            src: include_str!("shaders/triangle.wgsl"),
+            label: Some("graphics"),
+            src: include_str!("shaders/graphics.wgsl"),
         });
 
         let camera_bgl = device.create_bind_group_layout(&BindGroupLayoutInfo {
@@ -36,12 +39,12 @@ impl Graphics {
         });
 
         let pl = device.create_pipeline_layout(&PipelineLayoutInfo {
-            label: Some("triangle"),
+            label: Some("graphics"),
             bind_group_layouts: &[&camera_bgl],
             push_constant_ranges: &[&(0..std::mem::size_of::<PushConstant>() as u32)],
         });
         let triangle_pipeline = device.create_render_pipeline(&RenderPipelineInfo {
-            label: Some("triangle"),
+            label: Some("graphics"),
             layout: &pl,
             shader: &shader,
             vs_main: "vs_main",
@@ -91,7 +94,68 @@ impl Graphics {
         self.draw_state.pipeline = Some(pipeline.clone());
     }
 
-    pub fn draw_filled_triangle(
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_rect(
+        &mut self,
+        position: Vec2,
+        rotation: f32,
+        scale: Vec2,
+        origin: Vec2,
+        thickness: f32,
+        color: Color,
+        device: &mut RenderDevice,
+    ) {
+        let Some(target) = self.draw_state.target.as_ref() else {
+            panic!("draw target is not set");
+        };
+
+        let Some(camera) = self.draw_state.current_camera.as_ref() else {
+            panic!("camera is not set");
+        };
+
+        let Some(pipeline) = self.draw_state.pipeline.as_ref() else {
+            panic!("render pipeline is not set");
+        };
+
+        let mut bind_groups = [RenderDevice::EMPTY_BIND_GROUP; RenderDevice::MAX_BIND_GROUPS];
+        bind_groups[0] = Some(camera.clone());
+
+        let model = Mat4::from_translation(position.extend(0.0) - origin.extend(0.0))
+            * Mat4::from_translation(origin.extend(0.0))
+            * Mat4::from_rotation_z(rotation)
+            * Mat4::from_translation(-origin.extend(0.0))
+            * Mat4::from_scale(scale.extend(1.0));
+        let push_constant = PushConstant {
+            model: model.to_cols_array(),
+            color: color.to_array_f32(),
+            info: [Self::VERTEX_TYPE_OUTLINE, thickness, 0.0, 0.0],
+        };
+        let push_constant_data = Some(cast_slice(&[push_constant]).to_vec());
+
+        let mut vertex_buffers =
+            [RenderDevice::EMPTY_VERTEX_BUFFER; RenderDevice::MAX_VERTEX_BUFFERS];
+        vertex_buffers[0] = Some(self.meshes.rect_outline.vbo.clone());
+
+        let indexed_draw = Some(IndexedDraw {
+            buffer: self.meshes.rect_outline.ibo.clone(),
+            format: IndexFormat::Uint16,
+            indices: 0..self.meshes.rect_outline.indices as u32,
+        });
+
+        // todo: this is pretty ugly, can we Default DrawCommand?
+        // todo: push constants is a vec allocation each time. Can't be Any because need Pod + Zeroable. Can't be Pod + Zeroable because they need Sized, so can't be a trait object. Can allocate in command buffer then reference, but get's complicated if we ever want to combine more than one command buffer. Plus we potentially end up with lifetimes everywhere. Yay Rust!
+        device.push_draw_command(DrawCommand {
+            target: target.clone(),
+            bind_groups,
+            pipeline: pipeline.clone(),
+            push_constant_data,
+            vertex_buffers,
+            vertices: 0..3,
+            indexed_draw,
+        })
+    }
+
+    pub fn draw_filled_rect(
         &mut self,
         position: Vec2,
         rotation: f32,
@@ -123,17 +187,18 @@ impl Graphics {
         let push_constant = PushConstant {
             model: model.to_cols_array(),
             color: color.to_array_f32(),
+            info: [Self::VERTEX_TYPE_FILL, 0.0, 0.0, 0.0],
         };
         let push_constant_data = Some(cast_slice(&[push_constant]).to_vec());
 
         let mut vertex_buffers =
             [RenderDevice::EMPTY_VERTEX_BUFFER; RenderDevice::MAX_VERTEX_BUFFERS];
-        vertex_buffers[0] = Some(self.meshes.triangle.vbo.clone());
+        vertex_buffers[0] = Some(self.meshes.rect.vbo.clone());
 
         let indexed_draw = Some(IndexedDraw {
-            buffer: self.meshes.triangle.ibo.clone(),
+            buffer: self.meshes.rect.ibo.clone(),
             format: IndexFormat::Uint16,
-            indices: 0..self.meshes.triangle.indices as u32,
+            indices: 0..self.meshes.rect.indices as u32,
         });
 
         // todo: this is pretty ugly, can we Default DrawCommand?
@@ -279,12 +344,14 @@ impl PartialEq for Camera {
 pub struct PushConstant {
     pub model: [f32; 16],
     pub color: [f32; 4],
+    pub info: [f32; 4], // [0 => vertex type, 1 => thickness, 2 => unused, 3 => unused]
 }
 
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 #[repr(C)]
 pub struct Vertex {
     pub position: [f32; 2],
+    pub normal: [f32; 2],
 }
 
 impl Vertex {
@@ -292,13 +359,13 @@ impl Vertex {
         VertexBufferLayout {
             stride: std::mem::size_of::<Self>() as u64,
             ty: VertexType::Vertex,
-            formats: &[VertexFormat::Float32x2],
+            formats: &[VertexFormat::Float32x2, VertexFormat::Float32x2],
         }
     }
 }
 
-const fn v(pos: [f32; 2]) -> Vertex {
-    Vertex { position: pos }
+const fn v(position: [f32; 2], normal: [f32; 2]) -> Vertex {
+    Vertex { position, normal }
 }
 
 struct Mesh {
@@ -345,21 +412,102 @@ impl Mesh {
 }
 
 struct Meshes {
-    triangle: Mesh,
+    rect: Mesh,
+    rect_outline: Mesh,
 }
 
 impl Meshes {
-    const TRIANGLE: [Vertex; 3] = [v([0.0, 0.0]), v([0.5, 1.0]), v([1.0, 0.0])];
-    const TRIANGLE_INDICES: [u16; 6] = [0, 1, 2, 0, 2, 3];
+    const RECT: [Vertex; 4] = [
+        v([0.0, 0.0], [0.0, 0.0]),
+        v([0.0, 1.0], [0.0, 0.0]),
+        v([1.0, 1.0], [0.0, 0.0]),
+        v([1.0, 0.0], [0.0, 0.0]),
+    ];
+    const RECT_INDICES: [u16; 6] = [0, 1, 2, 0, 2, 3];
 
     fn new(device: &RenderDevice) -> Self {
-        let triangle = Mesh::new(
-            &Self::TRIANGLE,
-            &Self::TRIANGLE_INDICES,
-            Some("triangle"),
-            device,
+        let rect = Mesh::new(&Self::RECT, &Self::RECT_INDICES, Some("rect"), device);
+
+        let (vertices, indices) = compute_outline(&Self::RECT);
+        let rect_outline = Mesh::new(&vertices, &indices, Some("rect outline"), device);
+
+        Self { rect, rect_outline }
+    }
+}
+
+fn compute_outline(vertices: &[Vertex]) -> (Vec<Vertex>, Vec<u16>) {
+    let point_count = vertices.len();
+    let vertex_count = point_count * 2;
+    let index_count = point_count * 6;
+
+    let mut outline_vertices = vec![v([0.0, 0.0], [0.0, 0.0]); vertex_count];
+    let mut indices = vec![0_u16; index_count];
+
+    for i in 0..point_count {
+        // https://stackoverflow.com/questions/68973103/how-to-create-outline?noredirect=1&lq=1
+        let p = if i == 0 { point_count - 1 } else { i - 1 };
+
+        let p1 = v2(vertices[p].position[0], vertices[p].position[1]);
+        let p2 = v2(vertices[i].position[0], vertices[i].position[1]);
+        let p3 = v2(
+            vertices[(i + 1) % point_count].position[0],
+            vertices[(i + 1) % point_count].position[1],
         );
 
-        Self { triangle }
+        // Compute normals.
+        let mut n12 = age_math::normal(p1, p2);
+        let mut n23 = age_math::normal(p2, p3);
+
+        // Point outwards.
+        // 1. Compute center of the shape.
+        let center = geometric_center(vertices);
+        // 2. Use dot product of normal and direction of center to current point (center - p2) to decide if inward or outward.
+        if n12.dot(center - p2) > 0.0 {
+            n12 = -n12;
+        }
+        if n23.dot(center - p2) > 0.0 {
+            n23 = -n23;
+        }
+
+        let normal = (n12 + n23).normalize();
+
+        // Construct vertex array such that inside point index % 2 == 0 and outline point % 2 == 1.
+        // This allows us to apply a outline thickness weighting to the correct points in the shader.
+        outline_vertices[2 * i].position = p2.to_array();
+        outline_vertices[2 * i].normal = [0.0; 2];
+        outline_vertices[2 * i + 1].position = p2.to_array();
+        outline_vertices[2 * i + 1].normal = normal.to_array();
+
+        // Modulo vertex count because the final set of indices needs to wrap back around to the first vertices.
+        indices[6 * i] = (2 * i as u16) % vertex_count as u16; // i.e. 0
+        indices[6 * i + 1] = ((2 * i as u16) + 1) % vertex_count as u16; // i.e. 1
+        indices[6 * i + 2] = ((2 * i as u16) + 2) % vertex_count as u16; // i.e. 2
+        indices[6 * i + 3] = ((2 * i as u16) + 2) % vertex_count as u16; // i.e. 2
+        indices[6 * i + 4] = ((2 * i as u16) + 1) % vertex_count as u16; // i.e. 1
+        indices[6 * i + 5] = ((2 * i as u16) + 3) % vertex_count as u16; // i.e. 3
     }
+
+    (outline_vertices, indices)
+}
+
+fn geometric_center(vertices: &[Vertex]) -> Vec2 {
+    let point_count = vertices.len();
+
+    // https://stackoverflow.com/questions/34059116/what-is-the-fastest-way-to-find-the-center-of-an-irregular-convex-polygon
+    let mut sum_center = Vec2::ZERO;
+    let mut sum_weight = 0.0;
+
+    for i in 0..point_count {
+        let point = v2(vertices[i].position[0], vertices[i].position[1]);
+        let prev = v2(
+            vertices[(i as isize - 1) as usize].position[0],
+            vertices[(i as isize - 1) as usize].position[1],
+        );
+        let next = v2(vertices[i + 1].position[0], vertices[i + 1].position[1]);
+        let weight = (point - next).length() + (point - prev).length();
+        sum_center += point * weight;
+        sum_weight += weight;
+    }
+
+    sum_center / sum_weight
 }

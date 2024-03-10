@@ -237,7 +237,27 @@ impl Context {
         self.graphics.set_render_pipeline(pipeline);
     }
 
-    pub fn draw_filled_triangle(
+    pub fn draw_rect(
+        &mut self,
+        position: Vec2,
+        rotation: f32,
+        scale: Vec2,
+        origin: Vec2,
+        thickness: f32,
+        color: Color,
+    ) {
+        self.graphics.draw_rect(
+            position,
+            rotation,
+            scale,
+            origin,
+            thickness,
+            color,
+            &mut self.device,
+        );
+    }
+
+    pub fn draw_filled_rect(
         &mut self,
         position: Vec2,
         rotation: f32,
@@ -245,13 +265,7 @@ impl Context {
         origin: Vec2,
         color: Color,
     ) {
-        self.graphics.draw_filled_triangle(
-            position,
-            rotation,
-            scale,
-            origin,
-            color,
-            &mut self.device,
-        );
+        self.graphics
+            .draw_filled_rect(position, rotation, scale, origin, color, &mut self.device);
     }
 }

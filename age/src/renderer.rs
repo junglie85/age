@@ -350,7 +350,7 @@ impl RenderDevice {
                     shader_location,
                 });
 
-                offset += 1;
+                offset += format.size();
                 shader_location += 1;
             }
         }

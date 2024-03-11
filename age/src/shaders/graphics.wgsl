@@ -27,8 +27,21 @@ var<push_constant> r_pc: PushConstant;
 
 @vertex
 fn vs_main(vertex: Vertex) -> VsOut {
-    // todo: select the vertex type and apply thickness if outline vertex.
-    let position = r_camera.view_proj * r_pc.model * vec4(vertex.position, 0.0, 1.0);
+    let ty = r_pc.info.x;
+    let thickness = r_pc.info.y;
+    let is_fill = select(false, true, ty >= 0.5 && ty < 1.5);
+    let is_outline = select(false, true, ty >= 1.5 && ty < 2.5);
+
+    var model = r_pc.model;
+    var position = vec4(vertex.position, 0.0, 1.0);
+    if is_outline {
+        // Add thickness to model's scale components.
+        var width = vertex.normal * thickness;
+        model[0][0] += width.x;
+        model[1][1] += width.y;
+    }
+    position = r_camera.view_proj * model * position;
+
     let color = r_pc.color;
 
     return VsOut(position, color);

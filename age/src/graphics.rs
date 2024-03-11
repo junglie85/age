@@ -22,8 +22,8 @@ pub struct Graphics {
 }
 
 impl Graphics {
-    pub const VERTEX_TYPE_FILL: f32 = 0.5;
-    pub const VERTEX_TYPE_OUTLINE: f32 = 1.5;
+    pub const VERTEX_TYPE_FILL: f32 = 1.0;
+    pub const VERTEX_TYPE_OUTLINE: f32 = 2.0;
 
     pub(crate) fn new(left: f32, right: f32, bottom: f32, top: f32, device: &RenderDevice) -> Self {
         let shader = device.create_shader(&ShaderInfo {
@@ -440,6 +440,9 @@ fn compute_outline(vertices: &[Vertex]) -> (Vec<Vertex>, Vec<u16>) {
     let vertex_count = point_count * 2;
     let index_count = point_count * 6;
 
+    // Compute center of the shape, used for pointing the normals outwards.
+    let center = geometric_center(vertices);
+
     let mut outline_vertices = vec![v([0.0, 0.0], [0.0, 0.0]); vertex_count];
     let mut indices = vec![0_u16; index_count];
 
@@ -459,9 +462,7 @@ fn compute_outline(vertices: &[Vertex]) -> (Vec<Vertex>, Vec<u16>) {
         let mut n23 = age_math::normal(p2, p3);
 
         // Point outwards.
-        // 1. Compute center of the shape.
-        let center = geometric_center(vertices);
-        // 2. Use dot product of normal and direction of center to current point (center - p2) to decide if inward or outward.
+        // Use dot product of normal and direction of center to current point (center - p2) to decide if inward or outward.
         if n12.dot(center - p2) > 0.0 {
             n12 = -n12;
         }
@@ -498,14 +499,17 @@ fn geometric_center(vertices: &[Vertex]) -> Vec2 {
     let mut sum_weight = 0.0;
 
     for i in 0..point_count {
-        let point = v2(vertices[i].position[0], vertices[i].position[1]);
-        let prev = v2(
-            vertices[(i as isize - 1) as usize].position[0],
-            vertices[(i as isize - 1) as usize].position[1],
+        let p = if i == 0 { point_count - 1 } else { i - 1 };
+
+        let p1 = v2(vertices[p].position[0], vertices[p].position[1]);
+        let p2 = v2(vertices[i].position[0], vertices[i].position[1]);
+        let p3 = v2(
+            vertices[(i + 1) % point_count].position[0],
+            vertices[(i + 1) % point_count].position[1],
         );
-        let next = v2(vertices[i + 1].position[0], vertices[i + 1].position[1]);
-        let weight = (point - next).length() + (point - prev).length();
-        sum_center += point * weight;
+
+        let weight = (p2 - p3).length() + (p2 - p1).length();
+        sum_center += p2 * weight;
         sum_weight += weight;
     }
 

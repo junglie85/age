@@ -6,8 +6,14 @@ mod renderer;
 
 pub use app::{App, AppBuilder, Context};
 pub use error::{AgeError, AgeResult};
-pub use graphics::Camera;
-pub use renderer::Color;
+pub use graphics::{Camera, Vertex};
+pub use renderer::{
+    align_to, AddressMode, BindGroup, BindGroupInfo, BindGroupLayout, BindGroupLayoutInfo, Binding,
+    BindingType, Buffer, BufferInfo, BufferType, Color, DrawCommand, DrawTarget, FilterMode,
+    IndexFormat, IndexedDraw, PipelineLayout, PipelineLayoutInfo, RenderDevice, RenderPipeline,
+    RenderPipelineInfo, Sampler, SamplerInfo, Shader, ShaderInfo, Texture, TextureFormat,
+    TextureInfo, TextureView, VertexBufferLayout, VertexFormat, VertexType,
+};
 
 pub trait Game {
     fn on_start(&mut self, _ctx: &mut Context) {}

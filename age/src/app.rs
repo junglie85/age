@@ -97,6 +97,10 @@ impl App {
         AppBuilder::new(width, height).build()
     }
 
+    pub fn device(&self) -> &RenderDevice {
+        &self.device
+    }
+
     pub fn run(self, mut game: impl Game) -> AgeResult {
         let App {
             config,

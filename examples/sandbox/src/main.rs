@@ -1,11 +1,21 @@
-use age::{AgeResult, App, Color, Context, Game};
+use age::{AgeResult, App, Color, Context, Game, Texture, TextureFormat, TextureInfo};
 use age_math::v2;
 
-struct Sandbox {}
+struct Sandbox {
+    grid: Texture,
+}
 
 impl Sandbox {
-    fn new(_app: &App) -> AgeResult<Self> {
-        Ok(Self {})
+    fn new(app: &App) -> AgeResult<Self> {
+        let grid = app.device().create_texture(&TextureInfo {
+            label: Some("grid"),
+            width: 2,
+            height: 2,
+            format: TextureFormat::Rgba8Unorm,
+        });
+        app.device().write_texture();
+
+        Ok(Self { grid })
     }
 }
 
@@ -15,13 +25,10 @@ impl Game for Sandbox {
     fn on_tick(&mut self, ctx: &mut Context) {
         // ctx.set_draw_target(target);
         // ctx.set_render_pipeline(pipeline);
-        let position = v2(200.0, 100.0);
-        let origin = v2(200.0, 100.0);
-        let rotation = 0.0_f32.to_radians();
-        let scale = v2(400.0, 200.0);
-        let color = Color::YELLOW;
-        ctx.draw_filled_rect(position, rotation, scale, origin, color);
-        ctx.draw_rect(position, rotation, scale, origin, 10.0, Color::BLACK);
+        ctx.draw_filled_rect(v2(200.0, 100.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), Color::YELLOW);
+        ctx.draw_rect(v2(200.0, 100.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), 10.0, Color::BLACK);
+        ctx.draw_filled_rect(v2(300.0, 150.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), Color::RED);
+        ctx.draw_textured_rect(v2(300.0, 150.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), &self.grid, Color::WHITE);
     }
 
     fn on_stop(&mut self, _ctx: &mut Context) {}

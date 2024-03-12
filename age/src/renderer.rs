@@ -409,29 +409,6 @@ impl RenderDevice {
         }
     }
 
-    pub fn create_render_texture(&self, info: &TextureInfo) -> RenderTexture {
-        let texture = self.device.create_texture(&TextureDescriptor {
-            label: info.label,
-            size: Extent3d {
-                width: info.width,
-                height: info.height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: info.sample_count,
-            dimension: TextureDimension::D2,
-            format: info.format.into(),
-            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
-            view_formats: &[info.format.into()], // todo: handle srgb / non-srgb
-        });
-
-        RenderTexture {
-            texture: Arc::new(texture),
-            sample_count: info.sample_count,
-            format: info.format,
-        }
-    }
-
     pub fn create_sampler(&self, info: &SamplerInfo) -> Sampler {
         let sampler = self.device.create_sampler(&SamplerDescriptor {
             label: info.label,
@@ -455,6 +432,35 @@ impl RenderDevice {
 
         Shader {
             shader: Arc::new(shader),
+        }
+    }
+
+    pub fn create_texture(&self, info: &TextureInfo) -> Texture {
+        let mut usage = TextureUsages::TEXTURE_BINDING;
+        if info.renderable {
+            usage |= TextureUsages::RENDER_ATTACHMENT;
+        }
+
+        let texture = self.device.create_texture(&TextureDescriptor {
+            label: info.label,
+            size: Extent3d {
+                width: info.width,
+                height: info.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: info.sample_count,
+            dimension: TextureDimension::D2,
+            format: info.format.into(),
+            usage,
+            view_formats: &[info.format.into()], // todo: handle srgb / non-srgb
+        });
+
+        Texture {
+            texture: Arc::new(texture),
+            sample_count: info.sample_count,
+            format: info.format,
+            is_renderable: info.renderable,
         }
     }
 
@@ -639,7 +645,7 @@ pub struct DrawTarget {
 }
 
 impl DrawTarget {
-    pub fn new(color_target: &RenderTexture) -> Self {
+    pub fn new(color_target: &Texture) -> Self {
         let view = color_target.texture.create_view(&TextureViewDescriptor {
             label: Some("color target"),
             ..Default::default()
@@ -674,7 +680,7 @@ impl TryFrom<&mut WindowSurface> for DrawTarget {
 }
 
 pub(crate) struct WindowTarget {
-    color_target: RenderTexture,
+    color_target: Texture,
     draw_target: DrawTarget,
     sampler: Sampler,
     bgl: BindGroupLayout,
@@ -686,7 +692,7 @@ pub(crate) struct WindowTarget {
 
 impl WindowTarget {
     pub(crate) fn new(width: u32, height: u32, device: &RenderDevice) -> Self {
-        let color_target = device.create_render_texture(&TextureInfo {
+        let color_target = device.create_texture(&TextureInfo {
             label: Some("window target"),
             width,
             height,
@@ -757,7 +763,7 @@ impl WindowTarget {
             let (width, height) = surface.size();
             let format = self.color_target.format();
 
-            self.color_target = device.create_render_texture(&TextureInfo {
+            self.color_target = device.create_texture(&TextureInfo {
                 label: Some("window target"),
                 width,
                 height,
@@ -778,7 +784,7 @@ impl WindowTarget {
     }
 
     fn create_configurable_resources(
-        color_target: &RenderTexture,
+        color_target: &Texture,
         bgl: &BindGroupLayout,
         sampler: &Sampler,
         device: &RenderDevice,
@@ -954,6 +960,7 @@ pub struct TextureInfo<'info> {
     pub width: u32,
     pub height: u32,
     pub format: TextureFormat,
+    pub renderable: bool,
     pub sample_count: u32,
 }
 
@@ -964,21 +971,27 @@ impl<'info> Default for TextureInfo<'info> {
             width: 1,
             height: 1,
             format: TextureFormat::Bgra8Unorm,
+            renderable: false,
             sample_count: 1,
         }
     }
 }
 
 #[derive(Clone)]
-pub struct RenderTexture {
+pub struct Texture {
     texture: Arc<wgpu::Texture>,
     sample_count: u32,
     format: TextureFormat,
+    is_renderable: bool,
 }
 
-impl RenderTexture {
+impl Texture {
     pub fn format(&self) -> TextureFormat {
         self.format
+    }
+
+    pub fn is_render_texture(&self) -> bool {
+        self.is_renderable
     }
 
     pub fn sample_count(&self) -> u32 {
@@ -991,7 +1004,7 @@ impl RenderTexture {
     }
 }
 
-impl PartialEq for RenderTexture {
+impl PartialEq for Texture {
     fn eq(&self, other: &Self) -> bool {
         // We don't need to include other fields because they are inherent in the texture.
         self.texture.global_id() == other.texture.global_id()

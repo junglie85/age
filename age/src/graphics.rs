@@ -6,17 +6,25 @@ use std::sync::{
 use age_math::{v2, Mat4, Vec2};
 use bytemuck::{cast_slice, Pod, Zeroable};
 
-use crate::renderer::{
-    self, BindGroup, BindGroupInfo, BindGroupLayout, BindGroupLayoutInfo, Binding, BindingType,
-    Buffer, BufferInfo, BufferType, Color, DrawCommand, DrawTarget, IndexFormat, IndexedDraw,
-    PipelineLayoutInfo, RenderDevice, RenderPipeline, RenderPipelineInfo, ShaderInfo,
-    TextureFormat, VertexBufferLayout, VertexFormat, VertexType,
+use crate::{
+    renderer::{
+        self, BindGroup, BindGroupInfo, BindGroupLayout, BindGroupLayoutInfo, Binding, BindingType,
+        Buffer, BufferInfo, BufferType, Color, DrawCommand, DrawTarget, IndexFormat, IndexedDraw,
+        PipelineLayoutInfo, RenderDevice, RenderPipeline, RenderPipelineInfo, Sampler, ShaderInfo,
+        Texture, TextureFormat, VertexBufferLayout, VertexFormat, VertexType,
+    },
+    AddressMode, FilterMode, SamplerInfo, TextureInfo, TextureView, TextureViewInfo,
 };
 
 pub struct Graphics {
     draw_state: DrawState,
     camera_bgl: BindGroupLayout,
-    triangle_pipeline: RenderPipeline,
+    texture_bgl: BindGroupLayout,
+    default_sampler: Sampler,
+    default_texture: Texture,
+    default_texture_view: TextureView,
+    default_texture_bg: BindGroup, // todo: keep track of these internally!
+    pipeline: RenderPipeline,
     camera: Camera,
     meshes: Meshes,
 }
@@ -32,18 +40,62 @@ impl Graphics {
         });
 
         let camera_bgl = device.create_bind_group_layout(&BindGroupLayoutInfo {
-            label: Some("camera"),
+            label: Some("graphics camera"),
             entries: &[BindingType::Uniform {
                 min_size: std::mem::size_of::<[f32; 16]>() as u64,
             }],
         });
 
+        let texture_bgl = device.create_bind_group_layout(&BindGroupLayoutInfo {
+            label: Some("graphics texture"),
+            entries: &[
+                BindingType::Sampler,
+                BindingType::Texture { sample_count: 1 },
+            ],
+        });
+
         let pl = device.create_pipeline_layout(&PipelineLayoutInfo {
             label: Some("graphics"),
-            bind_group_layouts: &[&camera_bgl],
+            bind_group_layouts: &[&camera_bgl, &texture_bgl],
             push_constant_ranges: &[&(0..std::mem::size_of::<PushConstant>() as u32)],
         });
-        let triangle_pipeline = device.create_render_pipeline(&RenderPipelineInfo {
+
+        let default_sampler = device.create_sampler(&SamplerInfo {
+            label: Some("graphics default"),
+            address_mode_u: AddressMode::ClampToEdge,
+            address_mode_v: AddressMode::ClampToEdge,
+            mag_filter: FilterMode::Nearest,
+            min_filter: FilterMode::Nearest,
+        });
+
+        let default_texture = device.create_texture(&TextureInfo {
+            label: Some("graphics default"),
+            width: 1,
+            height: 1,
+            format: TextureFormat::Rgba8Unorm,
+            renderable: false,
+            sample_count: 1,
+        });
+        device.write_texture(&default_texture, &Color::WHITE.to_array_u8());
+
+        let default_texture_view = default_texture.create_view(&TextureViewInfo {
+            label: Some("graphics default"),
+        });
+
+        let default_texture_bg = device.create_bind_group(&BindGroupInfo {
+            label: Some("graphics texture"),
+            layout: &texture_bgl,
+            entries: &[
+                Binding::Sampler {
+                    sampler: &default_sampler,
+                },
+                Binding::Texture {
+                    texture_view: &default_texture_view,
+                },
+            ],
+        });
+
+        let pipeline = device.create_render_pipeline(&RenderPipelineInfo {
             label: Some("graphics"),
             layout: &pl,
             shader: &shader,
@@ -61,17 +113,30 @@ impl Graphics {
         Self {
             draw_state: DrawState::default(),
             camera_bgl,
-            triangle_pipeline,
+            texture_bgl,
+            default_sampler,
+            default_texture,
+            default_texture_view,
+            default_texture_bg,
+            pipeline,
             camera,
             meshes,
         }
+    }
+
+    pub fn default_sampler(&self) -> &Sampler {
+        &self.default_sampler
+    }
+
+    pub fn texture_bind_group_layout(&self) -> &BindGroupLayout {
+        &self.texture_bgl
     }
 
     pub(crate) fn begin_frame(&mut self, target: impl Into<DrawTarget>) {
         self.draw_state = DrawState::default();
         self.set_draw_target(target);
         self.set_camera(&self.camera.clone());
-        self.set_render_pipeline(&self.triangle_pipeline.clone());
+        self.set_render_pipeline(&self.pipeline.clone());
     }
 
     pub fn set_camera(&mut self, camera: &Camera) {
@@ -94,8 +159,68 @@ impl Graphics {
         self.draw_state.pipeline = Some(pipeline.clone());
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn draw_rect(
+        &mut self,
+        position: Vec2,
+        rotation: f32,
+        scale: Vec2,
+        origin: Vec2,
+        color: Color,
+        device: &mut RenderDevice,
+    ) {
+        let Some(target) = self.draw_state.target.as_ref() else {
+            panic!("draw target is not set");
+        };
+
+        let Some(camera) = self.draw_state.current_camera.as_ref() else {
+            panic!("camera is not set");
+        };
+
+        let Some(pipeline) = self.draw_state.pipeline.as_ref() else {
+            panic!("render pipeline is not set");
+        };
+
+        let mut bind_groups = [RenderDevice::EMPTY_BIND_GROUP; RenderDevice::MAX_BIND_GROUPS];
+        bind_groups[0] = Some(camera.clone());
+        bind_groups[1] = Some(self.default_texture_bg.clone());
+
+        let model = Mat4::from_translation(position.extend(0.0) - origin.extend(0.0))
+            * Mat4::from_translation(origin.extend(0.0))
+            * Mat4::from_rotation_z(rotation)
+            * Mat4::from_translation(-origin.extend(0.0))
+            * Mat4::from_scale(scale.extend(1.0));
+        let push_constant = PushConstant {
+            model: model.to_cols_array(),
+            color: color.to_array_f32(),
+            info: [Self::VERTEX_TYPE_FILL, 0.0, 0.0, 0.0],
+        };
+        let push_constant_data = Some(cast_slice(&[push_constant]).to_vec());
+
+        let mut vertex_buffers =
+            [RenderDevice::EMPTY_VERTEX_BUFFER; RenderDevice::MAX_VERTEX_BUFFERS];
+        vertex_buffers[0] = Some(self.meshes.rect.vbo.clone());
+
+        let indexed_draw = Some(IndexedDraw {
+            buffer: self.meshes.rect.ibo.clone(),
+            format: IndexFormat::Uint16,
+            indices: 0..self.meshes.rect.indices as u32,
+        });
+
+        // todo: this is pretty ugly, can we Default DrawCommand?
+        // todo: push constants is a vec allocation each time. Can't be Any because need Pod + Zeroable. Can't be Pod + Zeroable because they need Sized, so can't be a trait object. Can allocate in command buffer then reference, but get's complicated if we ever want to combine more than one command buffer. Plus we potentially end up with lifetimes everywhere. Yay Rust!
+        device.push_draw_command(DrawCommand {
+            target: target.clone(),
+            bind_groups,
+            pipeline: pipeline.clone(),
+            push_constant_data,
+            vertex_buffers,
+            vertices: 0..3,
+            indexed_draw,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_rect_outline(
         &mut self,
         position: Vec2,
         rotation: f32,
@@ -119,6 +244,7 @@ impl Graphics {
 
         let mut bind_groups = [RenderDevice::EMPTY_BIND_GROUP; RenderDevice::MAX_BIND_GROUPS];
         bind_groups[0] = Some(camera.clone());
+        bind_groups[1] = Some(self.default_texture_bg.clone());
 
         let model = Mat4::from_translation(position.extend(0.0) - origin.extend(0.0))
             * Mat4::from_translation(origin.extend(0.0))
@@ -155,12 +281,16 @@ impl Graphics {
         })
     }
 
-    pub fn draw_filled_rect(
+    // todo: extract draw_* logic into a single function that all other functions call.
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_rect_textured(
         &mut self,
         position: Vec2,
         rotation: f32,
         scale: Vec2,
         origin: Vec2,
+        bg: &BindGroup, // todo: expose bind group here or manage it internally? How would we handle non-default samplers? draw_rect_textured_ext()?
         color: Color,
         device: &mut RenderDevice,
     ) {
@@ -178,6 +308,7 @@ impl Graphics {
 
         let mut bind_groups = [RenderDevice::EMPTY_BIND_GROUP; RenderDevice::MAX_BIND_GROUPS];
         bind_groups[0] = Some(camera.clone());
+        bind_groups[1] = Some(bg.clone());
 
         let model = Mat4::from_translation(position.extend(0.0) - origin.extend(0.0))
             * Mat4::from_translation(origin.extend(0.0))
@@ -352,6 +483,7 @@ pub struct PushConstant {
 pub struct Vertex {
     pub position: [f32; 2],
     pub normal: [f32; 2],
+    pub uv: [f32; 2],
 }
 
 impl Vertex {
@@ -359,13 +491,21 @@ impl Vertex {
         VertexBufferLayout {
             stride: std::mem::size_of::<Self>() as u64,
             ty: VertexType::Vertex,
-            formats: &[VertexFormat::Float32x2, VertexFormat::Float32x2],
+            formats: &[
+                VertexFormat::Float32x2,
+                VertexFormat::Float32x2,
+                VertexFormat::Float32x2,
+            ],
         }
     }
 }
 
-const fn v(position: [f32; 2], normal: [f32; 2]) -> Vertex {
-    Vertex { position, normal }
+const fn v(position: [f32; 2], normal: [f32; 2], uv: [f32; 2]) -> Vertex {
+    Vertex {
+        position,
+        normal,
+        uv,
+    }
 }
 
 struct Mesh {
@@ -418,10 +558,10 @@ struct Meshes {
 
 impl Meshes {
     const RECT: [Vertex; 4] = [
-        v([0.0, 0.0], [0.0, 0.0]),
-        v([0.0, 1.0], [0.0, 0.0]),
-        v([1.0, 1.0], [0.0, 0.0]),
-        v([1.0, 0.0], [0.0, 0.0]),
+        v([0.0, 0.0], [0.0, 0.0], [0.0, 1.0]),
+        v([0.0, 1.0], [0.0, 0.0], [0.0, 0.0]),
+        v([1.0, 1.0], [0.0, 0.0], [1.0, 0.0]),
+        v([1.0, 0.0], [0.0, 0.0], [1.0, 1.0]),
     ];
     const RECT_INDICES: [u16; 6] = [0, 1, 2, 0, 2, 3];
 
@@ -443,7 +583,7 @@ fn compute_outline(vertices: &[Vertex]) -> (Vec<Vertex>, Vec<u16>) {
     // Compute center of the shape, used for pointing the normals outwards.
     let center = geometric_center(vertices);
 
-    let mut outline_vertices = vec![v([0.0, 0.0], [0.0, 0.0]); vertex_count];
+    let mut outline_vertices = vec![v([0.0, 0.0], [0.0, 0.0], [0.0, 0.0]); vertex_count];
     let mut indices = vec![0_u16; index_count];
 
     for i in 0..point_count {

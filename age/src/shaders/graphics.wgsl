@@ -6,11 +6,13 @@ struct Vertex {
     @builtin(vertex_index) id: u32,
     @location(0) position: vec2<f32>,
     @location(1) normal: vec2<f32>,
+    @location(2) uv: vec2<f32>,
 }
 
 struct VsOut {
     @builtin(position) position: vec4<f32>,
     @location(0) color: vec4<f32>,
+    @location(1) uv: vec2<f32>,
 }
 
 
@@ -22,6 +24,11 @@ struct PushConstant {
 
 @group(0) @binding(0)
 var<uniform> r_camera: Camera;
+
+@group(1) @binding(0)
+var r_sampler: sampler;
+@group(1) @binding(1)
+var r_texture: texture_2d<f32>;
 
 var<push_constant> r_pc: PushConstant;
 
@@ -44,10 +51,14 @@ fn vs_main(vertex: Vertex) -> VsOut {
 
     let color = r_pc.color;
 
-    return VsOut(position, color);
+    // Invert y-axis.
+    let uv = vec2(vertex.uv.x, 1.0 - vertex.uv.y);
+
+    return VsOut(position, color, uv);
 }
 
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-    return in.color;
+    let sample = textureSample(r_texture, r_sampler, in.uv) ;
+    return sample * in.color;
 }

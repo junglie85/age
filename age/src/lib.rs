@@ -12,7 +12,7 @@ pub use renderer::{
     BindingType, Buffer, BufferInfo, BufferType, Color, DrawCommand, DrawTarget, FilterMode,
     IndexFormat, IndexedDraw, PipelineLayout, PipelineLayoutInfo, RenderDevice, RenderPipeline,
     RenderPipelineInfo, Sampler, SamplerInfo, Shader, ShaderInfo, Texture, TextureFormat,
-    TextureInfo, TextureView, VertexBufferLayout, VertexFormat, VertexType,
+    TextureInfo, TextureView, TextureViewInfo, VertexBufferLayout, VertexFormat, VertexType,
 };
 
 pub trait Game {

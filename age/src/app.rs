@@ -11,7 +11,7 @@ use crate::{
     graphics::Graphics,
     os,
     renderer::{Color, DrawTarget, RenderDevice, RenderPipeline, WindowSurface, WindowTarget},
-    AgeResult, Camera, Game,
+    AgeResult, BindGroup, Camera, Game, Texture,
 };
 
 pub(crate) struct AppConfig {
@@ -97,7 +97,11 @@ impl App {
         AppBuilder::new(width, height).build()
     }
 
-    pub fn device(&self) -> &RenderDevice {
+    pub fn graphics(&self) -> &Graphics {
+        &self.graphics
+    }
+
+    pub fn render_device(&self) -> &RenderDevice {
         &self.device
     }
 
@@ -247,10 +251,22 @@ impl Context {
         rotation: f32,
         scale: Vec2,
         origin: Vec2,
+        color: Color,
+    ) {
+        self.graphics
+            .draw_rect(position, rotation, scale, origin, color, &mut self.device);
+    }
+
+    pub fn draw_rect_outline(
+        &mut self,
+        position: Vec2,
+        rotation: f32,
+        scale: Vec2,
+        origin: Vec2,
         thickness: f32,
         color: Color,
     ) {
-        self.graphics.draw_rect(
+        self.graphics.draw_rect_outline(
             position,
             rotation,
             scale,
@@ -261,15 +277,23 @@ impl Context {
         );
     }
 
-    pub fn draw_filled_rect(
+    pub fn draw_rect_textured(
         &mut self,
         position: Vec2,
         rotation: f32,
         scale: Vec2,
         origin: Vec2,
+        bg: &BindGroup,
         color: Color,
     ) {
-        self.graphics
-            .draw_filled_rect(position, rotation, scale, origin, color, &mut self.device);
+        self.graphics.draw_rect_textured(
+            position,
+            rotation,
+            scale,
+            origin,
+            bg,
+            color,
+            &mut self.device,
+        );
     }
 }

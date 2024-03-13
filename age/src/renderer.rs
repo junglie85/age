@@ -9,13 +9,13 @@ use bytemuck::cast_slice;
 use wgpu::{
     BindGroupDescriptor, BindGroupLayoutDescriptor, BindingResource, BlendState, BufferBindingType,
     BufferDescriptor, BufferSize, BufferUsages, ColorTargetState, ColorWrites,
-    CommandEncoderDescriptor, CreateSurfaceError, Extent3d, Face, FragmentState, FrontFace, LoadOp,
-    MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode, PresentMode,
-    PrimitiveState, PrimitiveTopology, RenderPassColorAttachment, RenderPassDescriptor,
-    RenderPipelineDescriptor, SamplerDescriptor, ShaderModuleDescriptor, ShaderSource,
-    ShaderStages, StoreOp, Surface, SurfaceConfiguration, SurfaceError, SurfaceTexture,
-    TextureDescriptor, TextureDimension, TextureSampleType, TextureUsages, TextureViewDescriptor,
-    TextureViewDimension, VertexState,
+    CommandEncoderDescriptor, CreateSurfaceError, Extent3d, Face, FragmentState, FrontFace,
+    ImageDataLayout, LoadOp, MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode,
+    PresentMode, PrimitiveState, PrimitiveTopology, RenderPassColorAttachment,
+    RenderPassDescriptor, RenderPipelineDescriptor, SamplerDescriptor, ShaderModuleDescriptor,
+    ShaderSource, ShaderStages, StoreOp, Surface, SurfaceConfiguration, SurfaceError,
+    SurfaceTexture, TextureAspect, TextureDescriptor, TextureDimension, TextureSampleType,
+    TextureUsages, TextureViewDescriptor, TextureViewDimension, VertexState,
 };
 use winit::window::Window;
 
@@ -175,7 +175,7 @@ impl RenderDevice {
                 if &current_bind_groups[i] != bind_group {
                     current_bind_groups[i] = bind_group.clone();
                     if let Some(bg) = bind_group.as_ref() {
-                        pass.set_bind_group(0, bg, &[]);
+                        pass.set_bind_group(i as u32, bg, &[]);
                     }
                 }
             }
@@ -436,7 +436,7 @@ impl RenderDevice {
     }
 
     pub fn create_texture(&self, info: &TextureInfo) -> Texture {
-        let mut usage = TextureUsages::TEXTURE_BINDING;
+        let mut usage = TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST;
         if info.renderable {
             usage |= TextureUsages::RENDER_ATTACHMENT;
         }
@@ -478,6 +478,25 @@ impl RenderDevice {
         if let Some(mut buf) = self.queue.write_buffer_with(buffer, 0, size) {
             buf.copy_from_slice(cast_slice(data));
         }
+    }
+
+    pub fn write_texture<T: bytemuck::Pod + bytemuck::Zeroable>(
+        &self,
+        texture: &Texture,
+        data: &[T],
+    ) {
+        let size = texture.texture.size();
+
+        self.queue.write_texture(
+            texture.texture.as_image_copy(),
+            cast_slice(data),
+            ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(size.width * texture.format().bytes_per_pixel()),
+                rows_per_image: Some(size.height),
+            },
+            size,
+        );
     }
 }
 
@@ -646,16 +665,12 @@ pub struct DrawTarget {
 
 impl DrawTarget {
     pub fn new(color_target: &Texture) -> Self {
-        let view = color_target.texture.create_view(&TextureViewDescriptor {
+        let color_target = color_target.create_view(&TextureViewInfo {
             label: Some("color target"),
             ..Default::default()
         });
 
-        Self {
-            color_target: TextureView {
-                view: Arc::new(view),
-            },
-        }
+        Self { color_target }
     }
 
     pub fn color_target(&self) -> &TextureView {
@@ -697,7 +712,8 @@ impl WindowTarget {
             width,
             height,
             format: TextureFormat::Rgba8Unorm, // todo: make this rgba unorm or srgb?
-            ..Default::default()
+            renderable: true,
+            sample_count: 1,
         });
         let sampler = device.create_sampler(&SamplerInfo::default());
         let bgl = device.create_bind_group_layout(&BindGroupLayoutInfo {
@@ -768,7 +784,8 @@ impl WindowTarget {
                 width,
                 height,
                 format,
-                ..Default::default()
+                renderable: true,
+                sample_count: 1,
             });
 
             let (draw_target, bg) = Self::create_configurable_resources(
@@ -915,6 +932,14 @@ pub enum TextureFormat {
     // todo: srgb
 }
 
+impl TextureFormat {
+    pub fn bytes_per_pixel(&self) -> u32 {
+        Into::<wgpu::TextureFormat>::into(*self)
+            .block_copy_size(Some(TextureAspect::All))
+            .unwrap_or(0)
+    }
+}
+
 impl From<TextureFormat> for wgpu::TextureFormat {
     fn from(format: TextureFormat) -> Self {
         match format {
@@ -933,6 +958,16 @@ impl TryFrom<wgpu::TextureFormat> for TextureFormat {
             wgpu::TextureFormat::Rgba8Unorm => Ok(TextureFormat::Rgba8Unorm),
             _ => Err("unsupported texture format".into()),
         }
+    }
+}
+
+pub struct TextureViewInfo<'info> {
+    pub label: Option<&'info str>,
+}
+
+impl<'info> Default for TextureViewInfo<'info> {
+    fn default() -> Self {
+        Self { label: None }
     }
 }
 
@@ -986,6 +1021,17 @@ pub struct Texture {
 }
 
 impl Texture {
+    pub fn create_view(&self, info: &TextureViewInfo) -> TextureView {
+        let view = self.texture.create_view(&TextureViewDescriptor {
+            label: info.label,
+            ..Default::default()
+        });
+
+        TextureView {
+            view: Arc::new(view),
+        }
+    }
+
     pub fn format(&self) -> TextureFormat {
         self.format
     }
@@ -1001,6 +1047,14 @@ impl Texture {
     pub fn size(&self) -> (u32, u32) {
         let size = self.texture.size();
         (size.width, size.height)
+    }
+}
+
+impl Deref for Texture {
+    type Target = wgpu::Texture;
+
+    fn deref(&self) -> &Self::Target {
+        &self.texture
     }
 }
 

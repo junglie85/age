@@ -51,8 +51,7 @@ fn vs_main(vertex: Vertex) -> VsOut {
 
     let color = r_pc.color;
 
-    // Invert y-axis.
-    let uv = vec2(vertex.uv.x, 1.0 - vertex.uv.y);
+    let uv = vertex.uv;
 
     return VsOut(position, color, uv);
 }

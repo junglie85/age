@@ -1,12 +1,14 @@
 mod app;
 mod error;
 mod graphics;
+mod image;
 mod os;
 mod renderer;
 
 pub use app::{App, AppBuilder, Context};
 pub use error::{AgeError, AgeResult};
 pub use graphics::{Camera, Vertex};
+pub use image::Image;
 pub use renderer::{
     align_to, AddressMode, BindGroup, BindGroupInfo, BindGroupLayout, BindGroupLayoutInfo, Binding,
     BindingType, Buffer, BufferInfo, BufferType, Color, DrawCommand, DrawTarget, FilterMode,

@@ -129,6 +129,7 @@ impl RenderDevice {
         let mut current_index_buffer: Option<Buffer> = None;
 
         for DrawCommand {
+            clear_color,
             target,
             bind_groups,
             pipeline,
@@ -138,8 +139,10 @@ impl RenderDevice {
             indexed_draw,
         } in self.command_buffer.commands.iter()
         {
-            if Some(&target.color_target) != current_target.as_ref() {
-                current_target = Some(target.color_target.clone());
+            if Some(&target.color_target) != current_target.as_ref() || clear_color.is_some() {
+                if Some(&target.color_target) != current_target.as_ref() {
+                    current_target = Some(target.color_target.clone());
+                }
 
                 let view = &target.color_target;
 
@@ -147,15 +150,20 @@ impl RenderDevice {
                 // it has an exclusive borrow of encoder.
                 current_rpass = None;
 
+                let ops = Operations {
+                    load: match clear_color {
+                        Some(color) => LoadOp::Clear((*color).into()),
+                        None => LoadOp::Load,
+                    },
+                    store: StoreOp::Store,
+                };
+
                 current_rpass = Some(encoder.begin_render_pass(&RenderPassDescriptor {
-                    label: Some("window target"),
+                    label: target.label(),
                     color_attachments: &[Some(RenderPassColorAttachment {
                         view,
                         resolve_target: None,
-                        ops: Operations {
-                            load: LoadOp::Clear(wgpu::Color::BLUE), // todo: need to set clear color
-                            store: StoreOp::Store,
-                        },
+                        ops,
                     })],
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
@@ -704,19 +712,27 @@ impl From<FilterMode> for wgpu::FilterMode {
 #[derive(Clone)]
 pub struct DrawTarget {
     color_target: TextureView,
+    label: Option<String>,
 }
 
 impl DrawTarget {
-    pub fn new(color_target: &Texture) -> Self {
+    pub fn new(color_target: &Texture, label: Option<&str>) -> Self {
         let color_target = color_target.create_view(&TextureViewInfo {
             label: Some("color target"),
         });
 
-        Self { color_target }
+        Self {
+            color_target,
+            label: label.map(|s| s.to_string()),
+        }
     }
 
     pub fn color_target(&self) -> &TextureView {
         &self.color_target
+    }
+
+    pub fn label(&self) -> Option<&str> {
+        self.label.as_deref()
     }
 }
 
@@ -732,6 +748,7 @@ impl TryFrom<&mut WindowSurface> for DrawTarget {
     fn try_from(surface: &mut WindowSurface) -> Result<Self, Self::Error> {
         Ok(DrawTarget {
             color_target: surface.acquire()?,
+            label: Some("window surface".to_string()),
         })
     }
 }
@@ -848,7 +865,7 @@ impl WindowTarget {
         sampler: &Sampler,
         device: &RenderDevice,
     ) -> (DrawTarget, BindGroup) {
-        let draw_target = DrawTarget::new(color_target);
+        let draw_target = DrawTarget::new(color_target, Some("window target"));
         let bg = device.create_bind_group(&BindGroupInfo {
             label: Some("window target"),
             layout: bgl,
@@ -868,6 +885,7 @@ impl WindowTarget {
         bind_groups[0] = Some(self.bg.clone());
 
         device.push_draw_command(DrawCommand {
+            clear_color: Some(Color::RED),
             target: surface.try_into()?,
             bind_groups,
             pipeline: self.pipeline.clone(),
@@ -1291,6 +1309,7 @@ impl CommandBuffer {
 }
 
 pub struct DrawCommand {
+    pub clear_color: Option<Color>,
     pub target: DrawTarget,
     pub bind_groups: [Option<BindGroup>; RenderDevice::MAX_BIND_GROUPS],
     pub pipeline: RenderPipeline,

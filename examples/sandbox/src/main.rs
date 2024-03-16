@@ -54,7 +54,7 @@ impl Sandbox {
             ..Default::default()
         });
         app.render_device().write_texture(&fighter, fighter_img.pixels());
-        let fighter_view = fighter.create_view(&TextureViewInfo { label: Some("fighter") }); // todo: add a default view to texture.
+        let fighter_view = fighter.create_view(&TextureViewInfo { label: Some("fighter") });
         let fighter_bg = app.render_device().create_bind_group(&BindGroupInfo {
             label: Some("fighter"),
             layout: app.graphics().texture_bind_group_layout(),
@@ -85,6 +85,7 @@ impl Game for Sandbox {
     fn on_tick(&mut self, ctx: &mut Context) {
         // ctx.set_draw_target(target);
         // ctx.set_render_pipeline(pipeline);
+        ctx.clear(Color::BLUE);
         ctx.draw_box_filled(v2(200.0, 100.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), Color::YELLOW);
         ctx.draw_box(v2(200.0, 100.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), 10.0, Color::BLACK);
         ctx.draw_box_filled(v2(300.0, 150.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), Color::RED);

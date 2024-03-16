@@ -161,6 +161,10 @@ impl Graphics {
         self.draw_state.pipeline = Some(pipeline.clone());
     }
 
+    pub fn clear(&mut self, color: Color) {
+        self.draw_state.clear_color = Some(color);
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn draw_box(
         &mut self,
@@ -173,7 +177,7 @@ impl Graphics {
         device: &mut RenderDevice,
     ) {
         draw(
-            &self.draw_state,
+            &mut self.draw_state,
             position,
             rotation,
             scale,
@@ -198,7 +202,7 @@ impl Graphics {
         device: &mut RenderDevice,
     ) {
         draw(
-            &self.draw_state,
+            &mut self.draw_state,
             position,
             rotation,
             scale,
@@ -225,7 +229,7 @@ impl Graphics {
         device: &mut RenderDevice,
     ) {
         draw(
-            &self.draw_state,
+            &mut self.draw_state,
             position,
             rotation,
             scale,
@@ -259,7 +263,7 @@ impl Graphics {
 
 #[allow(clippy::too_many_arguments)]
 fn draw(
-    draw_state: &DrawState,
+    draw_state: &mut DrawState,
     position: Vec2,
     rotation: f32,
     scale: Vec2,
@@ -311,6 +315,7 @@ fn draw(
     });
 
     device.push_draw_command(DrawCommand {
+        clear_color: draw_state.clear_color.take(),
         target: target.clone(),
         bind_groups,
         pipeline: pipeline.clone(),
@@ -325,6 +330,7 @@ fn draw(
 struct DrawState {
     cameras: Vec<Camera>,
     current_camera: Option<BindGroup>,
+    clear_color: Option<Color>,
     target: Option<DrawTarget>,
     pipeline: Option<RenderPipeline>,
 }

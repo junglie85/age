@@ -18,6 +18,7 @@ pub(crate) struct AppConfig {
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) title: String,
+    pub(crate) clear_color: Color,
 }
 
 impl Default for AppConfig {
@@ -26,6 +27,7 @@ impl Default for AppConfig {
             width: 640,
             height: 480,
             title: "AGE".to_string(),
+            clear_color: Color::BLUE,
         }
     }
 }
@@ -44,6 +46,11 @@ impl AppBuilder {
         };
 
         Self { config }
+    }
+
+    pub fn with_clear_color(mut self, color: Color) -> Self {
+        self.config.clear_color = color;
+        self
     }
 
     pub fn with_title(mut self, title: impl Into<String>) -> Self {
@@ -243,6 +250,10 @@ impl Context {
 
     pub fn set_render_pipeline(&mut self, pipeline: &RenderPipeline) {
         self.graphics.set_render_pipeline(pipeline);
+    }
+
+    pub fn clear(&mut self, color: Color) {
+        self.graphics.clear(color);
     }
 
     pub fn draw_box(

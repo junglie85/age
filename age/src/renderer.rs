@@ -667,7 +667,6 @@ impl DrawTarget {
     pub fn new(color_target: &Texture) -> Self {
         let color_target = color_target.create_view(&TextureViewInfo {
             label: Some("color target"),
-            ..Default::default()
         });
 
         Self { color_target }
@@ -961,14 +960,9 @@ impl TryFrom<wgpu::TextureFormat> for TextureFormat {
     }
 }
 
+#[derive(Default)]
 pub struct TextureViewInfo<'info> {
     pub label: Option<&'info str>,
-}
-
-impl<'info> Default for TextureViewInfo<'info> {
-    fn default() -> Self {
-        Self { label: None }
-    }
 }
 
 #[derive(Debug, Clone)]

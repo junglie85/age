@@ -88,7 +88,7 @@ impl Game for Sandbox {
         ctx.draw_rect_textured(v2(300.0, 150.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), &self.grid_bg, Color::WHITE);
         ctx.draw_rect_textured(
             v2(600.0, 600.0),
-            0.0,
+            30.0_f32.to_radians(),
             v2(self.fighter.size().0 as f32, self.fighter.size().1 as f32), // todo: impl into Vec2
             v2(self.fighter.size().0 as f32 / 2.0, self.fighter.size().1 as f32 / 2.0),
             &self.fighter_bg,
@@ -96,10 +96,10 @@ impl Game for Sandbox {
         );
         ctx.draw_rect_outline(
             v2(600.0, 600.0),
-            0.0,
+            30.0_f32.to_radians(),
             v2(self.fighter.size().0 as f32, self.fighter.size().1 as f32), // todo: impl into Vec2
             v2(self.fighter.size().0 as f32 / 2.0, self.fighter.size().1 as f32 / 2.0),
-            4.0,
+            2.0,
             Color::BLACK,
         );
     }

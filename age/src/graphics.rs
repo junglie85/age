@@ -184,7 +184,8 @@ impl Graphics {
         bind_groups[0] = Some(camera.clone());
         bind_groups[1] = Some(self.default_texture_bg.clone());
 
-        let model = Mat4::from_translation(position.extend(0.0) - origin.extend(0.0))
+        let translation = (position - origin).floor();
+        let model = Mat4::from_translation(translation.extend(0.0))
             * Mat4::from_translation(origin.extend(0.0))
             * Mat4::from_rotation_z(rotation)
             * Mat4::from_translation(-origin.extend(0.0))
@@ -246,7 +247,8 @@ impl Graphics {
         bind_groups[0] = Some(camera.clone());
         bind_groups[1] = Some(self.default_texture_bg.clone());
 
-        let model = Mat4::from_translation(position.extend(0.0) - origin.extend(0.0))
+        let translation = (position - origin).floor();
+        let model = Mat4::from_translation(translation.extend(0.0))
             * Mat4::from_translation(origin.extend(0.0))
             * Mat4::from_rotation_z(rotation)
             * Mat4::from_translation(-origin.extend(0.0))
@@ -278,7 +280,7 @@ impl Graphics {
             vertex_buffers,
             vertices: 0..3,
             indexed_draw,
-        })
+        });
     }
 
     // todo: extract draw_* logic into a single function that all other functions call.
@@ -310,7 +312,8 @@ impl Graphics {
         bind_groups[0] = Some(camera.clone());
         bind_groups[1] = Some(bg.clone());
 
-        let model = Mat4::from_translation(position.extend(0.0) - origin.extend(0.0))
+        let translation = (position - origin).floor();
+        let model = Mat4::from_translation(translation.extend(0.0))
             * Mat4::from_translation(origin.extend(0.0))
             * Mat4::from_rotation_z(rotation)
             * Mat4::from_translation(-origin.extend(0.0))

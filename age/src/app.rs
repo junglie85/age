@@ -11,7 +11,7 @@ use crate::{
     graphics::Graphics,
     os,
     renderer::{Color, DrawTarget, RenderDevice, RenderPipeline, WindowSurface, WindowTarget},
-    AgeResult, BindGroup, Camera, Game, Texture,
+    AgeResult, BindGroup, Camera, Game,
 };
 
 pub(crate) struct AppConfig {

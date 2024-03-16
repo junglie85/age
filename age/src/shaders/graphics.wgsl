@@ -15,7 +15,6 @@ struct VsOut {
     @location(1) uv: vec2<f32>,
 }
 
-
 struct PushConstant {
     model: mat4x4<f32>,
     color: vec4<f32>,
@@ -35,22 +34,22 @@ var<push_constant> r_pc: PushConstant;
 @vertex
 fn vs_main(vertex: Vertex) -> VsOut {
     let ty = r_pc.info.x;
-    let thickness = r_pc.info.y;
     let is_fill = select(false, true, ty >= 0.5 && ty < 1.5);
     let is_outline = select(false, true, ty >= 1.5 && ty < 2.5);
 
-    var model = r_pc.model;
-    var position = vec4(vertex.position, 0.0, 1.0);
-    if is_outline {
-        // Add thickness to model's scale components.
-        var width = vertex.normal * thickness;
-        model[0][0] += width.x;
-        model[1][1] += width.y;
+    let model = r_pc.model;
+    var world_position = model * vec4(vertex.position, 0.0, 1.0);
+    // Vertices forming the outside points of the outline must have an odd vertex_index.
+    if is_outline && vertex.id % 2 == 1 {
+        let thickness = r_pc.info.y;
+        let x = normalize(model * vec4(1.0, 0.0, 0.0, 0.0));
+        let y = normalize(model * vec4(0.0, 1.0, 0.0, 0.0));
+        let offset = (x * vertex.normal.x + y * vertex.normal.y) * thickness;
+        world_position += offset;
     }
-    position = r_camera.view_proj * model * position;
+    let position = r_camera.view_proj * world_position;
 
     let color = r_pc.color;
-
     let uv = vertex.uv;
 
     return VsOut(position, color, uv);

@@ -994,8 +994,9 @@ impl PartialEq for Shader {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TextureFormat {
     Bgra8Unorm,
+    Bgra8UnormSrgb,
     Rgba8Unorm,
-    // todo: srgb
+    Rgba8UnormSrgb,
 }
 
 impl TextureFormat {
@@ -1010,7 +1011,9 @@ impl From<TextureFormat> for wgpu::TextureFormat {
     fn from(format: TextureFormat) -> Self {
         match format {
             TextureFormat::Bgra8Unorm => wgpu::TextureFormat::Bgra8Unorm,
+            TextureFormat::Bgra8UnormSrgb => wgpu::TextureFormat::Bgra8UnormSrgb,
             TextureFormat::Rgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
+            TextureFormat::Rgba8UnormSrgb => wgpu::TextureFormat::Rgba8UnormSrgb,
         }
     }
 }
@@ -1021,7 +1024,9 @@ impl TryFrom<wgpu::TextureFormat> for TextureFormat {
     fn try_from(format: wgpu::TextureFormat) -> Result<Self, Self::Error> {
         match format {
             wgpu::TextureFormat::Bgra8Unorm => Ok(TextureFormat::Bgra8Unorm),
+            wgpu::TextureFormat::Bgra8UnormSrgb => Ok(TextureFormat::Bgra8UnormSrgb),
             wgpu::TextureFormat::Rgba8Unorm => Ok(TextureFormat::Rgba8Unorm),
+            wgpu::TextureFormat::Rgba8UnormSrgb => Ok(TextureFormat::Rgba8UnormSrgb),
             _ => Err("unsupported texture format".into()),
         }
     }
@@ -1158,7 +1163,7 @@ impl WindowSurface {
             surface: None,
             config: None,
             surface_texture: None,
-            format: TextureFormat::Bgra8Unorm,
+            format: TextureFormat::Bgra8UnormSrgb,
             width: 0,
             height: 0,
             vsync: true,
@@ -1227,7 +1232,8 @@ impl WindowSurface {
             PresentMode::Immediate
         };
 
-        config.format = wgpu::TextureFormat::Bgra8Unorm; // todo - srgb + pick best format.
+        // todo: pick best format and add/remove srgb from views as required.
+        config.format = TextureFormat::Bgra8UnormSrgb.into();
         config.present_mode = present_mode;
 
         surface.configure(&device.device, &config);

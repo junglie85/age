@@ -5,10 +5,13 @@ use age::{
 use age_math::v2;
 
 struct Sandbox {
+    #[allow(dead_code)]
     grid: Texture,
+    #[allow(dead_code)]
     grid_view: TextureView,
     grid_bg: BindGroup,
     fighter: Texture,
+    #[allow(dead_code)]
     fighter_view: TextureView,
     fighter_bg: BindGroup,
 }

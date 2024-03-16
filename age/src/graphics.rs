@@ -21,9 +21,11 @@ pub struct Graphics {
     camera_bgl: BindGroupLayout,
     texture_bgl: BindGroupLayout,
     default_sampler: Sampler,
+    #[allow(dead_code)]
     default_texture: Texture,
+    #[allow(dead_code)]
     default_texture_view: TextureView,
-    default_texture_bg: BindGroup, // todo: keep track of these internally!
+    default_texture_bg: BindGroup,
     pipeline: RenderPipeline,
     camera: Camera,
     meshes: Meshes,

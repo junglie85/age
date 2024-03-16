@@ -85,11 +85,11 @@ impl Game for Sandbox {
     fn on_tick(&mut self, ctx: &mut Context) {
         // ctx.set_draw_target(target);
         // ctx.set_render_pipeline(pipeline);
-        ctx.draw_rect(v2(200.0, 100.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), Color::YELLOW);
-        ctx.draw_rect_outline(v2(200.0, 100.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), 10.0, Color::BLACK);
-        ctx.draw_rect(v2(300.0, 150.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), Color::RED);
-        ctx.draw_rect_textured(v2(300.0, 150.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), &self.grid_bg, Color::WHITE);
-        ctx.draw_rect_textured(
+        ctx.draw_box_filled(v2(200.0, 100.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), Color::YELLOW);
+        ctx.draw_box(v2(200.0, 100.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), 10.0, Color::BLACK);
+        ctx.draw_box_filled(v2(300.0, 150.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), Color::RED);
+        ctx.draw_box_textured(v2(300.0, 150.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), &self.grid_bg, Color::WHITE);
+        ctx.draw_box_textured(
             v2(600.0, 600.0),
             30.0_f32.to_radians(),
             v2(self.fighter.size().0 as f32, self.fighter.size().1 as f32), // todo: impl into Vec2
@@ -97,7 +97,7 @@ impl Game for Sandbox {
             &self.fighter_bg,
             Color::WHITE,
         );
-        ctx.draw_rect_outline(
+        ctx.draw_box(
             v2(600.0, 600.0),
             30.0_f32.to_radians(),
             v2(self.fighter.size().0 as f32, self.fighter.size().1 as f32), // todo: impl into Vec2

@@ -161,69 +161,8 @@ impl Graphics {
         self.draw_state.pipeline = Some(pipeline.clone());
     }
 
-    pub fn draw_rect(
-        &mut self,
-        position: Vec2,
-        rotation: f32,
-        scale: Vec2,
-        origin: Vec2,
-        color: Color,
-        device: &mut RenderDevice,
-    ) {
-        let Some(target) = self.draw_state.target.as_ref() else {
-            panic!("draw target is not set");
-        };
-
-        let Some(camera) = self.draw_state.current_camera.as_ref() else {
-            panic!("camera is not set");
-        };
-
-        let Some(pipeline) = self.draw_state.pipeline.as_ref() else {
-            panic!("render pipeline is not set");
-        };
-
-        let mut bind_groups = [RenderDevice::EMPTY_BIND_GROUP; RenderDevice::MAX_BIND_GROUPS];
-        bind_groups[0] = Some(camera.clone());
-        bind_groups[1] = Some(self.default_texture_bg.clone());
-
-        let translation = (position - origin).floor();
-        let model = Mat4::from_translation(translation.extend(0.0))
-            * Mat4::from_translation(origin.extend(0.0))
-            * Mat4::from_rotation_z(rotation)
-            * Mat4::from_translation(-origin.extend(0.0))
-            * Mat4::from_scale(scale.extend(1.0));
-        let push_constant = PushConstant {
-            model: model.to_cols_array(),
-            color: color.to_array_f32(),
-            info: [Self::VERTEX_TYPE_FILL, 0.0, 0.0, 0.0],
-        };
-        let push_constant_data = Some(cast_slice(&[push_constant]).to_vec());
-
-        let mut vertex_buffers =
-            [RenderDevice::EMPTY_VERTEX_BUFFER; RenderDevice::MAX_VERTEX_BUFFERS];
-        vertex_buffers[0] = Some(self.meshes.rect.vbo.clone());
-
-        let indexed_draw = Some(IndexedDraw {
-            buffer: self.meshes.rect.ibo.clone(),
-            format: IndexFormat::Uint16,
-            indices: 0..self.meshes.rect.indices as u32,
-        });
-
-        // todo: this is pretty ugly, can we Default DrawCommand?
-        // todo: push constants is a vec allocation each time. Can't be Any because need Pod + Zeroable. Can't be Pod + Zeroable because they need Sized, so can't be a trait object. Can allocate in command buffer then reference, but get's complicated if we ever want to combine more than one command buffer. Plus we potentially end up with lifetimes everywhere. Yay Rust!
-        device.push_draw_command(DrawCommand {
-            target: target.clone(),
-            bind_groups,
-            pipeline: pipeline.clone(),
-            push_constant_data,
-            vertex_buffers,
-            vertices: 0..3,
-            indexed_draw,
-        })
-    }
-
     #[allow(clippy::too_many_arguments)]
-    pub fn draw_rect_outline(
+    pub fn draw_box(
         &mut self,
         position: Vec2,
         rotation: f32,
@@ -233,121 +172,72 @@ impl Graphics {
         color: Color,
         device: &mut RenderDevice,
     ) {
-        let Some(target) = self.draw_state.target.as_ref() else {
-            panic!("draw target is not set");
-        };
-
-        let Some(camera) = self.draw_state.current_camera.as_ref() else {
-            panic!("camera is not set");
-        };
-
-        let Some(pipeline) = self.draw_state.pipeline.as_ref() else {
-            panic!("render pipeline is not set");
-        };
-
-        let mut bind_groups = [RenderDevice::EMPTY_BIND_GROUP; RenderDevice::MAX_BIND_GROUPS];
-        bind_groups[0] = Some(camera.clone());
-        bind_groups[1] = Some(self.default_texture_bg.clone());
-
-        let translation = (position - origin).floor();
-        let model = Mat4::from_translation(translation.extend(0.0))
-            * Mat4::from_translation(origin.extend(0.0))
-            * Mat4::from_rotation_z(rotation)
-            * Mat4::from_translation(-origin.extend(0.0))
-            * Mat4::from_scale(scale.extend(1.0));
-        let push_constant = PushConstant {
-            model: model.to_cols_array(),
-            color: color.to_array_f32(),
-            info: [Self::VERTEX_TYPE_OUTLINE, thickness, 0.0, 0.0],
-        };
-        let push_constant_data = Some(cast_slice(&[push_constant]).to_vec());
-
-        let mut vertex_buffers =
-            [RenderDevice::EMPTY_VERTEX_BUFFER; RenderDevice::MAX_VERTEX_BUFFERS];
-        vertex_buffers[0] = Some(self.meshes.rect_outline.vbo.clone());
-
-        let indexed_draw = Some(IndexedDraw {
-            buffer: self.meshes.rect_outline.ibo.clone(),
-            format: IndexFormat::Uint16,
-            indices: 0..self.meshes.rect_outline.indices as u32,
-        });
-
-        // todo: this is pretty ugly, can we Default DrawCommand?
-        // todo: push constants is a vec allocation each time. Can't be Any because need Pod + Zeroable. Can't be Pod + Zeroable because they need Sized, so can't be a trait object. Can allocate in command buffer then reference, but get's complicated if we ever want to combine more than one command buffer. Plus we potentially end up with lifetimes everywhere. Yay Rust!
-        device.push_draw_command(DrawCommand {
-            target: target.clone(),
-            bind_groups,
-            pipeline: pipeline.clone(),
-            push_constant_data,
-            vertex_buffers,
-            vertices: 0..3,
-            indexed_draw,
-        });
+        draw(
+            &self.draw_state,
+            position,
+            rotation,
+            scale,
+            origin,
+            color,
+            &self.default_texture_bg,
+            &self.meshes.rect_outline.vbo,
+            [Self::VERTEX_TYPE_OUTLINE, thickness, 0.0, 0.0],
+            &self.meshes.rect_outline.ibo,
+            self.meshes.rect_outline.indices,
+            device,
+        );
     }
 
-    // todo: extract draw_* logic into a single function that all other functions call.
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn draw_rect_textured(
+    pub fn draw_box_filled(
         &mut self,
         position: Vec2,
         rotation: f32,
         scale: Vec2,
         origin: Vec2,
-        bg: &BindGroup, // todo: expose bind group here or manage it internally? How would we handle non-default samplers? draw_rect_textured_ext()?
         color: Color,
         device: &mut RenderDevice,
     ) {
-        let Some(target) = self.draw_state.target.as_ref() else {
-            panic!("draw target is not set");
-        };
+        draw(
+            &self.draw_state,
+            position,
+            rotation,
+            scale,
+            origin,
+            color,
+            &self.default_texture_bg,
+            &self.meshes.rect.vbo,
+            [Self::VERTEX_TYPE_FILL, 0.0, 0.0, 0.0],
+            &self.meshes.rect.ibo,
+            self.meshes.rect.indices,
+            device,
+        );
+    }
 
-        let Some(camera) = self.draw_state.current_camera.as_ref() else {
-            panic!("camera is not set");
-        };
-
-        let Some(pipeline) = self.draw_state.pipeline.as_ref() else {
-            panic!("render pipeline is not set");
-        };
-
-        let mut bind_groups = [RenderDevice::EMPTY_BIND_GROUP; RenderDevice::MAX_BIND_GROUPS];
-        bind_groups[0] = Some(camera.clone());
-        bind_groups[1] = Some(bg.clone());
-
-        let translation = (position - origin).floor();
-        let model = Mat4::from_translation(translation.extend(0.0))
-            * Mat4::from_translation(origin.extend(0.0))
-            * Mat4::from_rotation_z(rotation)
-            * Mat4::from_translation(-origin.extend(0.0))
-            * Mat4::from_scale(scale.extend(1.0));
-        let push_constant = PushConstant {
-            model: model.to_cols_array(),
-            color: color.to_array_f32(),
-            info: [Self::VERTEX_TYPE_FILL, 0.0, 0.0, 0.0],
-        };
-        let push_constant_data = Some(cast_slice(&[push_constant]).to_vec());
-
-        let mut vertex_buffers =
-            [RenderDevice::EMPTY_VERTEX_BUFFER; RenderDevice::MAX_VERTEX_BUFFERS];
-        vertex_buffers[0] = Some(self.meshes.rect.vbo.clone());
-
-        let indexed_draw = Some(IndexedDraw {
-            buffer: self.meshes.rect.ibo.clone(),
-            format: IndexFormat::Uint16,
-            indices: 0..self.meshes.rect.indices as u32,
-        });
-
-        // todo: this is pretty ugly, can we Default DrawCommand?
-        // todo: push constants is a vec allocation each time. Can't be Any because need Pod + Zeroable. Can't be Pod + Zeroable because they need Sized, so can't be a trait object. Can allocate in command buffer then reference, but get's complicated if we ever want to combine more than one command buffer. Plus we potentially end up with lifetimes everywhere. Yay Rust!
-        device.push_draw_command(DrawCommand {
-            target: target.clone(),
-            bind_groups,
-            pipeline: pipeline.clone(),
-            push_constant_data,
-            vertex_buffers,
-            vertices: 0..3,
-            indexed_draw,
-        })
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_box_textured(
+        &mut self,
+        position: Vec2,
+        rotation: f32,
+        scale: Vec2,
+        origin: Vec2,
+        texture_bg: &BindGroup, // todo: How should we handle non-default samplers? draw_rect_textured_ext()?
+        color: Color,
+        device: &mut RenderDevice,
+    ) {
+        draw(
+            &self.draw_state,
+            position,
+            rotation,
+            scale,
+            origin,
+            color,
+            texture_bg,
+            &self.meshes.rect.vbo,
+            [Self::VERTEX_TYPE_FILL, 0.0, 0.0, 0.0],
+            &self.meshes.rect.ibo,
+            self.meshes.rect.indices,
+            device,
+        );
     }
 
     pub fn create_camera(
@@ -365,6 +255,70 @@ impl Graphics {
         // todo: need to be able to control whether it updates with the view or stays fixed.
         &self.camera
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw(
+    draw_state: &DrawState,
+    position: Vec2,
+    rotation: f32,
+    scale: Vec2,
+    origin: Vec2,
+    color: Color,
+    texture_bg: &BindGroup,
+    vertices: &Buffer,
+    info: [f32; 4], // fill, outline, etc.
+    indices: &Buffer,
+    index_count: usize,
+    device: &mut RenderDevice,
+) {
+    let Some(target) = draw_state.target.as_ref() else {
+        panic!("draw target is not set");
+    };
+
+    let Some(camera) = draw_state.current_camera.as_ref() else {
+        panic!("camera is not set");
+    };
+
+    let Some(pipeline) = draw_state.pipeline.as_ref() else {
+        panic!("render pipeline is not set");
+    };
+
+    let mut bind_groups = [RenderDevice::EMPTY_BIND_GROUP; RenderDevice::MAX_BIND_GROUPS];
+    bind_groups[0] = Some(camera.clone());
+    bind_groups[1] = Some(texture_bg.clone());
+
+    let translation = (position - origin).floor();
+    let model = Mat4::from_translation(translation.extend(0.0))
+        * Mat4::from_translation(origin.extend(0.0))
+        * Mat4::from_rotation_z(rotation)
+        * Mat4::from_translation(-origin.extend(0.0))
+        * Mat4::from_scale(scale.extend(1.0));
+    let push_constant = PushConstant {
+        model: model.to_cols_array(),
+        color: color.to_array_f32(),
+        info,
+    };
+    let push_constant_data = Some(cast_slice(&[push_constant]).to_vec());
+
+    let mut vertex_buffers = [RenderDevice::EMPTY_VERTEX_BUFFER; RenderDevice::MAX_VERTEX_BUFFERS];
+    vertex_buffers[0] = Some(vertices.clone());
+
+    let indexed_draw = Some(IndexedDraw {
+        buffer: indices.clone(),
+        format: IndexFormat::Uint16,
+        indices: 0..index_count as u32,
+    });
+
+    device.push_draw_command(DrawCommand {
+        target: target.clone(),
+        bind_groups,
+        pipeline: pipeline.clone(),
+        push_constant_data,
+        vertex_buffers,
+        vertices: 0..0, // Not needed because we're using indexed draw.
+        indexed_draw,
+    });
 }
 
 #[derive(Default)]

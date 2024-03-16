@@ -245,19 +245,7 @@ impl Context {
         self.graphics.set_render_pipeline(pipeline);
     }
 
-    pub fn draw_rect(
-        &mut self,
-        position: Vec2,
-        rotation: f32,
-        scale: Vec2,
-        origin: Vec2,
-        color: Color,
-    ) {
-        self.graphics
-            .draw_rect(position, rotation, scale, origin, color, &mut self.device);
-    }
-
-    pub fn draw_rect_outline(
+    pub fn draw_box(
         &mut self,
         position: Vec2,
         rotation: f32,
@@ -266,7 +254,7 @@ impl Context {
         thickness: f32,
         color: Color,
     ) {
-        self.graphics.draw_rect_outline(
+        self.graphics.draw_box(
             position,
             rotation,
             scale,
@@ -277,7 +265,19 @@ impl Context {
         );
     }
 
-    pub fn draw_rect_textured(
+    pub fn draw_box_filled(
+        &mut self,
+        position: Vec2,
+        rotation: f32,
+        scale: Vec2,
+        origin: Vec2,
+        color: Color,
+    ) {
+        self.graphics
+            .draw_box_filled(position, rotation, scale, origin, color, &mut self.device);
+    }
+
+    pub fn draw_box_textured(
         &mut self,
         position: Vec2,
         rotation: f32,
@@ -286,7 +286,7 @@ impl Context {
         bg: &BindGroup,
         color: Color,
     ) {
-        self.graphics.draw_rect_textured(
+        self.graphics.draw_box_textured(
             position,
             rotation,
             scale,

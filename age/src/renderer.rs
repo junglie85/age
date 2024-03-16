@@ -1,5 +1,6 @@
 use std::{
     borrow::Cow,
+    hash::Hash,
     num::NonZeroU64,
     ops::{Add, Deref, Range, Rem, Sub},
     sync::Arc,
@@ -505,9 +506,18 @@ pub struct BindGroupLayoutInfo<'info> {
     pub entries: &'info [BindingType],
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BindGroupLayoutId(wgpu::Id<wgpu::BindGroupLayout>);
+
 #[derive(Clone)]
 pub struct BindGroupLayout {
     layout: Arc<wgpu::BindGroupLayout>,
+}
+
+impl BindGroupLayout {
+    pub fn id(&self) -> BindGroupLayoutId {
+        BindGroupLayoutId(self.layout.global_id())
+    }
 }
 
 impl Deref for BindGroupLayout {
@@ -518,15 +528,30 @@ impl Deref for BindGroupLayout {
     }
 }
 
+impl PartialEq for BindGroupLayout {
+    fn eq(&self, other: &Self) -> bool {
+        self.id() == other.id()
+    }
+}
+
 pub struct BindGroupInfo<'info> {
     pub label: Option<&'info str>,
     pub layout: &'info BindGroupLayout,
     pub entries: &'info [Binding<'info>],
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BindGroupId(wgpu::Id<wgpu::BindGroup>);
+
 #[derive(Debug, Clone)]
 pub struct BindGroup {
     bg: Arc<wgpu::BindGroup>,
+}
+
+impl BindGroup {
+    pub fn id(&self) -> BindGroupId {
+        BindGroupId(self.bg.global_id())
+    }
 }
 
 impl Deref for BindGroup {
@@ -539,7 +564,7 @@ impl Deref for BindGroup {
 
 impl PartialEq for BindGroup {
     fn eq(&self, other: &Self) -> bool {
-        self.bg.global_id() == other.bg.global_id()
+        self.id() == other.id()
     }
 }
 
@@ -563,9 +588,18 @@ pub struct BufferInfo<'info> {
     pub ty: BufferType,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BufferId(wgpu::Id<wgpu::Buffer>);
+
 #[derive(Debug, Clone)]
 pub struct Buffer {
     buffer: Arc<wgpu::Buffer>,
+}
+
+impl Buffer {
+    pub fn id(&self) -> BufferId {
+        BufferId(self.buffer.global_id())
+    }
 }
 
 impl Deref for Buffer {
@@ -578,7 +612,7 @@ impl Deref for Buffer {
 
 impl PartialEq for Buffer {
     fn eq(&self, other: &Self) -> bool {
-        self.buffer.global_id() == other.buffer.global_id()
+        self.id() == other.id()
     }
 }
 
@@ -609,9 +643,18 @@ impl<'info> Default for SamplerInfo<'info> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SamplerId(wgpu::Id<wgpu::Sampler>);
+
 #[derive(Debug, Clone)]
 pub struct Sampler {
     sampler: Arc<wgpu::Sampler>,
+}
+
+impl Sampler {
+    pub fn id(&self) -> SamplerId {
+        SamplerId(self.sampler.global_id())
+    }
 }
 
 impl Deref for Sampler {
@@ -624,7 +667,7 @@ impl Deref for Sampler {
 
 impl PartialEq for Sampler {
     fn eq(&self, other: &Self) -> bool {
-        self.sampler.global_id() == other.sampler.global_id()
+        self.id() == other.id()
     }
 }
 
@@ -844,9 +887,18 @@ pub struct PipelineLayoutInfo<'info> {
     pub push_constant_ranges: &'info [&'info Range<u32>],
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PipelineLayoutId(wgpu::Id<wgpu::PipelineLayout>);
+
 #[derive(Debug, Clone)]
 pub struct PipelineLayout {
     layout: Arc<wgpu::PipelineLayout>,
+}
+
+impl PipelineLayout {
+    pub fn id(&self) -> PipelineLayoutId {
+        PipelineLayoutId(self.layout.global_id())
+    }
 }
 
 impl Deref for PipelineLayout {
@@ -859,7 +911,7 @@ impl Deref for PipelineLayout {
 
 impl PartialEq for PipelineLayout {
     fn eq(&self, other: &Self) -> bool {
-        self.layout.global_id() == other.layout.global_id()
+        self.id() == other.id()
     }
 }
 
@@ -873,6 +925,9 @@ pub struct RenderPipelineInfo<'info> {
     pub buffers: &'info [VertexBufferLayout],
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RenderPipelineId(wgpu::Id<wgpu::RenderPipeline>);
+
 #[derive(Debug, Clone)]
 pub struct RenderPipeline {
     pipeline: Arc<wgpu::RenderPipeline>,
@@ -882,6 +937,10 @@ pub struct RenderPipeline {
 impl RenderPipeline {
     pub fn format(&self) -> TextureFormat {
         self.format
+    }
+
+    pub fn id(&self) -> RenderPipelineId {
+        RenderPipelineId(self.pipeline.global_id())
     }
 }
 
@@ -895,8 +954,7 @@ impl Deref for RenderPipeline {
 
 impl PartialEq for RenderPipeline {
     fn eq(&self, other: &Self) -> bool {
-        // We don't need to include other fields because their information is inherent in the individual pipeline.
-        self.pipeline.global_id() == other.pipeline.global_id()
+        self.id() == other.id()
     }
 }
 
@@ -905,9 +963,18 @@ pub struct ShaderInfo<'info> {
     pub src: &'info str,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ShaderId(wgpu::Id<wgpu::ShaderModule>);
+
 #[derive(Debug, Clone)]
 pub struct Shader {
     shader: Arc<wgpu::ShaderModule>,
+}
+
+impl Shader {
+    pub fn id(&self) -> ShaderId {
+        ShaderId(self.shader.global_id())
+    }
 }
 
 impl Deref for Shader {
@@ -920,7 +987,7 @@ impl Deref for Shader {
 
 impl PartialEq for Shader {
     fn eq(&self, other: &Self) -> bool {
-        self.shader.global_id() == other.shader.global_id()
+        self.id() == other.id()
     }
 }
 
@@ -965,9 +1032,18 @@ pub struct TextureViewInfo<'info> {
     pub label: Option<&'info str>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TextureViewId(wgpu::Id<wgpu::TextureView>);
+
 #[derive(Debug, Clone)]
 pub struct TextureView {
     view: Arc<wgpu::TextureView>,
+}
+
+impl TextureView {
+    pub fn id(&self) -> TextureViewId {
+        TextureViewId(self.view.global_id())
+    }
 }
 
 impl Deref for TextureView {
@@ -980,7 +1056,7 @@ impl Deref for TextureView {
 
 impl PartialEq for TextureView {
     fn eq(&self, other: &Self) -> bool {
-        self.view.global_id() == other.view.global_id()
+        self.id() == other.id()
     }
 }
 
@@ -1006,6 +1082,9 @@ impl<'info> Default for TextureInfo<'info> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TextureId(wgpu::Id<wgpu::Texture>);
+
 #[derive(Clone)]
 pub struct Texture {
     texture: Arc<wgpu::Texture>,
@@ -1028,6 +1107,10 @@ impl Texture {
 
     pub fn format(&self) -> TextureFormat {
         self.format
+    }
+
+    pub fn id(&self) -> TextureId {
+        TextureId(self.texture.global_id())
     }
 
     pub fn is_render_texture(&self) -> bool {

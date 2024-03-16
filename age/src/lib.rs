@@ -10,11 +10,13 @@ pub use error::{AgeError, AgeResult};
 pub use graphics::{Camera, Vertex};
 pub use image::Image;
 pub use renderer::{
-    align_to, AddressMode, BindGroup, BindGroupInfo, BindGroupLayout, BindGroupLayoutInfo, Binding,
-    BindingType, Buffer, BufferInfo, BufferType, Color, DrawCommand, DrawTarget, FilterMode,
-    IndexFormat, IndexedDraw, PipelineLayout, PipelineLayoutInfo, RenderDevice, RenderPipeline,
-    RenderPipelineInfo, Sampler, SamplerInfo, Shader, ShaderInfo, Texture, TextureFormat,
-    TextureInfo, TextureView, TextureViewInfo, VertexBufferLayout, VertexFormat, VertexType,
+    align_to, AddressMode, BindGroup, BindGroupId, BindGroupInfo, BindGroupLayout,
+    BindGroupLayoutId, BindGroupLayoutInfo, Binding, BindingType, Buffer, BufferId, BufferInfo,
+    BufferType, Color, DrawCommand, DrawTarget, FilterMode, IndexFormat, IndexedDraw,
+    PipelineLayout, PipelineLayoutId, PipelineLayoutInfo, RenderDevice, RenderPipeline,
+    RenderPipelineId, RenderPipelineInfo, Sampler, SamplerId, SamplerInfo, Shader, ShaderId,
+    ShaderInfo, Texture, TextureFormat, TextureId, TextureInfo, TextureView, TextureViewId,
+    TextureViewInfo, VertexBufferLayout, VertexFormat, VertexType,
 };
 
 pub trait Game {

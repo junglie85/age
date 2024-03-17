@@ -1,5 +1,5 @@
 use age::{
-    AgeResult, App, BindGroup, BindGroupInfo, Binding, Color, Context, Game, Image, Texture, TextureFormat,
+    AgeResult, App, BindGroup, BindGroupInfo, Binding, Color, Context, Game, Image, Rect, Texture, TextureFormat,
     TextureInfo, TextureView, TextureViewInfo,
 };
 use age_math::v2;
@@ -89,22 +89,30 @@ impl Game for Sandbox {
         ctx.draw_box_filled(v2(200.0, 100.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), Color::YELLOW);
         ctx.draw_box(v2(200.0, 100.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), 10.0, Color::BLACK);
         ctx.draw_box_filled(v2(300.0, 150.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), Color::RED);
-        ctx.draw_box_textured(v2(300.0, 150.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), &self.grid_bg, Color::WHITE);
+        ctx.draw_box_textured(v2(300.0, 150.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), &self.grid_bg);
         ctx.draw_box_textured(
             v2(600.0, 600.0),
             30.0_f32.to_radians(),
             v2(self.fighter.size().0 as f32, self.fighter.size().1 as f32), // todo: impl into Vec2
             v2(self.fighter.size().0 as f32 / 2.0, self.fighter.size().1 as f32 / 2.0),
             &self.fighter_bg,
-            Color::WHITE,
         );
         ctx.draw_box(
             v2(600.0, 600.0),
             30.0_f32.to_radians(),
-            v2(self.fighter.size().0 as f32, self.fighter.size().1 as f32), // todo: impl into Vec2
+            v2(self.fighter.size().0 as f32, self.fighter.size().1 as f32),
             v2(self.fighter.size().0 as f32 / 2.0, self.fighter.size().1 as f32 / 2.0),
             2.0,
             Color::BLACK,
+        );
+        ctx.draw_box_textured_ext(
+            v2(700.0, 700.0),
+            0.0,
+            v2(self.fighter.size().0 as f32, self.fighter.size().1 as f32),
+            v2(self.fighter.size().0 as f32 / 2.0, self.fighter.size().1 as f32 / 2.0),
+            &self.fighter_bg,
+            Rect::new(v2(0.5, 0.0), v2(0.5, 0.5)),
+            Color::WHITE,
         );
     }
 

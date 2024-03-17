@@ -11,7 +11,7 @@ use crate::{
     graphics::Graphics,
     os,
     renderer::{Color, DrawTarget, RenderDevice, RenderPipeline, WindowSurface, WindowTarget},
-    AgeResult, BindGroup, Camera, Game,
+    AgeResult, BindGroup, Camera, Game, Rect,
 };
 
 pub(crate) struct AppConfig {
@@ -294,15 +294,36 @@ impl Context {
         rotation: f32,
         scale: Vec2,
         origin: Vec2,
-        bg: &BindGroup,
-        color: Color,
+        texture_bg: &BindGroup,
     ) {
         self.graphics.draw_box_textured(
             position,
             rotation,
             scale,
             origin,
-            bg,
+            texture_bg,
+            &mut self.device,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_box_textured_ext(
+        &mut self,
+        position: Vec2,
+        rotation: f32,
+        scale: Vec2,
+        origin: Vec2,
+        texture_bg: &BindGroup,
+        texture_rect: Rect,
+        color: Color,
+    ) {
+        self.graphics.draw_box_textured_ext(
+            position,
+            rotation,
+            scale,
+            origin,
+            texture_bg,
+            texture_rect,
             color,
             &mut self.device,
         );

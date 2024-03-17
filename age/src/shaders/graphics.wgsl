@@ -18,6 +18,7 @@ struct VsOut {
 struct PushConstant {
     model: mat4x4<f32>,
     color: vec4<f32>,
+    texture_rect: vec4<f32>,
     info: vec4<f32>, // [0 => vertex type, 1 => thickness, 2 => unused, 3 => unused]
 }
 
@@ -50,7 +51,10 @@ fn vs_main(vertex: Vertex) -> VsOut {
     let position = r_camera.view_proj * world_position;
 
     let color = r_pc.color;
-    let uv = vertex.uv;
+
+    let tex_pos = vec2(r_pc.texture_rect.x, r_pc.texture_rect.y);
+    let tex_size = vec2(r_pc.texture_rect.z, r_pc.texture_rect.w);
+    let uv = tex_pos + (vertex.uv * tex_size);
 
     return VsOut(position, color, uv);
 }

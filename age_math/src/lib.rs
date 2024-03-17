@@ -1,5 +1,6 @@
 pub use glam::*;
 
+// todo: remove this once we have impl Into<Vec2>.
 pub fn v2(a: f32, b: f32) -> Vec2 {
     Vec2::new(a, b)
 }

@@ -184,6 +184,7 @@ impl Graphics {
             origin,
             color,
             &self.default_texture_bg,
+            Rect::new(Vec2::ZERO, Vec2::ONE),
             &self.meshes.rect_outline.vbo,
             [Self::VERTEX_TYPE_OUTLINE, thickness, 0.0, 0.0],
             &self.meshes.rect_outline.ibo,
@@ -209,6 +210,7 @@ impl Graphics {
             origin,
             color,
             &self.default_texture_bg,
+            Rect::new(Vec2::ZERO, Vec2::ONE),
             &self.meshes.rect.vbo,
             [Self::VERTEX_TYPE_FILL, 0.0, 0.0, 0.0],
             &self.meshes.rect.ibo,
@@ -224,7 +226,35 @@ impl Graphics {
         rotation: f32,
         scale: Vec2,
         origin: Vec2,
-        texture_bg: &BindGroup, // todo: How should we handle non-default samplers? draw_rect_textured_ext()?
+        texture_bg: &BindGroup,
+        device: &mut RenderDevice,
+    ) {
+        draw(
+            &mut self.draw_state,
+            position,
+            rotation,
+            scale,
+            origin,
+            Color::WHITE,
+            texture_bg,
+            Rect::new(Vec2::ZERO, Vec2::ONE),
+            &self.meshes.rect.vbo,
+            [Self::VERTEX_TYPE_FILL, 0.0, 0.0, 0.0],
+            &self.meshes.rect.ibo,
+            self.meshes.rect.indices,
+            device,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_box_textured_ext(
+        &mut self,
+        position: Vec2,
+        rotation: f32,
+        scale: Vec2,
+        origin: Vec2,
+        texture_bg: &BindGroup,
+        texture_rect: Rect,
         color: Color,
         device: &mut RenderDevice,
     ) {
@@ -236,6 +266,7 @@ impl Graphics {
             origin,
             color,
             texture_bg,
+            texture_rect,
             &self.meshes.rect.vbo,
             [Self::VERTEX_TYPE_FILL, 0.0, 0.0, 0.0],
             &self.meshes.rect.ibo,
@@ -270,6 +301,7 @@ fn draw(
     origin: Vec2,
     color: Color,
     texture_bg: &BindGroup,
+    texture_rect: Rect,
     vertices: &Buffer,
     info: [f32; 4], // fill, outline, etc.
     indices: &Buffer,
@@ -301,6 +333,7 @@ fn draw(
     let push_constant = PushConstant {
         model: model.to_cols_array(),
         color: color.to_array_f32(),
+        texture_rect: texture_rect.to_array_f32(),
         info,
     };
     let push_constant_data = Some(cast_slice(&[push_constant]).to_vec());
@@ -440,6 +473,7 @@ impl PartialEq for Camera {
 pub struct PushConstant {
     pub model: [f32; 16],
     pub color: [f32; 4],
+    pub texture_rect: [f32; 4],
     pub info: [f32; 4], // [0 => vertex type, 1 => thickness, 2 => unused, 3 => unused]
 }
 
@@ -619,4 +653,19 @@ fn geometric_center(vertices: &[Vertex]) -> Vec2 {
     }
 
     sum_center / sum_weight
+}
+
+pub struct Rect {
+    pub position: Vec2,
+    pub size: Vec2,
+}
+
+impl Rect {
+    pub fn new(position: Vec2, size: Vec2) -> Self {
+        Self { position, size }
+    }
+
+    pub fn to_array_f32(&self) -> [f32; 4] {
+        [self.position.x, self.position.y, self.size.x, self.size.y]
+    }
 }

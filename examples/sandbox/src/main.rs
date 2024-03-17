@@ -3,6 +3,7 @@ use age::{
     TextureInfo, TextureView, TextureViewInfo,
 };
 use age_math::v2;
+use glam::Vec2;
 
 struct Sandbox {
     #[allow(dead_code)]
@@ -117,6 +118,11 @@ impl Game for Sandbox {
         );
 
         ctx.draw_line(v2(500.0, 250.0), v2(700.0, 700.0), v2(0.0, 2.5), 5.0, Color::RED);
+
+        ctx.draw_circle_filled(v2(0.0, 400.0), 100.0, 30, 0.0, Vec2::ZERO, Color::YELLOW);
+        // ctx.draw_circle();
+        // ctx.draw_circle_textured();
+        // ctx.draw_circle_textured_ext();
     }
 
     fn on_stop(&mut self, _ctx: &mut Context) {}

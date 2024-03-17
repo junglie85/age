@@ -1,6 +1,9 @@
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
 use age_math::{v2, Mat4, Vec2};
@@ -176,11 +179,7 @@ impl Graphics {
     ) {
         let distance = pos2 - pos1;
         let rotation = distance.y.atan2(distance.x);
-        // let distance = (pos2 - pos1).length();
-        // let dot = pos1.dot(pos2);
-        // let len1 = pos1.length();
-        // let len2 = pos2.length();
-        // let rotation = (dot / (len1 * len2)).acos();
+
         self.draw_box_filled(
             pos1,
             rotation,
@@ -297,6 +296,37 @@ impl Graphics {
             [Self::VERTEX_TYPE_FILL, 0.0, 0.0, 0.0],
             &self.meshes.rect.ibo,
             self.meshes.rect.indices,
+            device,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_circle_filled(
+        &mut self,
+        position: Vec2,
+        radius: f32,
+        point_count: u32,
+        rotation: f32,
+        origin: Vec2,
+        color: Color,
+        device: &mut RenderDevice,
+    ) {
+        let circle = &self.meshes.circles[&point_count]; // todo: create if does not exist.
+        let scale = Vec2::splat(radius);
+
+        draw(
+            &mut self.draw_state,
+            position + scale, // We add scale here so that default origin is top-left corner of bounding box.
+            rotation,
+            scale,
+            origin,
+            color,
+            &self.default_texture_bg,
+            Rect::new(Vec2::ZERO, Vec2::ONE),
+            &circle.vbo,
+            [Self::VERTEX_TYPE_FILL, 0.0, 0.0, 0.0],
+            &circle.ibo,
+            circle.indices,
             device,
         );
     }
@@ -579,6 +609,7 @@ impl Mesh {
 struct Meshes {
     rect: Mesh,
     rect_outline: Mesh,
+    circles: HashMap<u32, Mesh>,
 }
 
 impl Meshes {
@@ -596,8 +627,39 @@ impl Meshes {
         let (vertices, indices) = compute_outline(&Self::RECT);
         let rect_outline = Mesh::new(&vertices, &indices, Some("rect outline"), device);
 
-        Self { rect, rect_outline }
+        let mut circles = HashMap::new();
+        let (vertices, indices) = compute_circle(30);
+        let circle = Mesh::new(&vertices, &indices, Some("circle 30"), device);
+        circles.insert(30, circle);
+
+        Self {
+            rect,
+            rect_outline,
+            circles,
+        }
     }
+}
+
+fn compute_circle(point_count: usize) -> (Vec<Vertex>, Vec<u16>) {
+    let mut vertices = vec![v([0.0, 0.0], [0.0, 0.0], [0.0, 0.0]); point_count];
+    let mut indices = vec![0_u16; (point_count - 2) * 3];
+
+    for i in 0..point_count {
+        let angle = (i as f32 / point_count as f32) * 360.0_f32.to_radians();
+        let (sine, cosine) = angle.sin_cos();
+        let position = v2(sine, cosine);
+
+        vertices[i].position = position.to_array();
+    }
+
+    for i in 0..point_count - 2 {
+        let offset = i * 3;
+        indices[offset] = 0;
+        indices[offset + 1] = i as u16 + 1;
+        indices[offset + 2] = i as u16 + 2;
+    }
+
+    (vertices, indices)
 }
 
 fn compute_outline(vertices: &[Vertex]) -> (Vec<Vertex>, Vec<u16>) {

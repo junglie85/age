@@ -340,4 +340,24 @@ impl Context {
             &mut self.device,
         );
     }
+
+    pub fn draw_circle_filled(
+        &mut self,
+        position: Vec2,
+        radius: f32,
+        point_count: u32,
+        rotation: f32,
+        origin: Vec2,
+        color: Color,
+    ) {
+        self.graphics.draw_circle_filled(
+            position,
+            radius,
+            point_count,
+            rotation,
+            origin,
+            color,
+            &mut self.device,
+        );
+    }
 }

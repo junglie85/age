@@ -341,6 +341,29 @@ impl Context {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_circle(
+        &mut self,
+        position: Vec2,
+        radius: f32,
+        point_count: u32,
+        rotation: f32,
+        origin: Vec2,
+        thickness: f32,
+        color: Color,
+    ) {
+        self.graphics.draw_circle(
+            position,
+            radius,
+            point_count,
+            rotation,
+            origin,
+            thickness,
+            color,
+            &mut self.device,
+        );
+    }
+
     pub fn draw_circle_filled(
         &mut self,
         position: Vec2,
@@ -356,6 +379,51 @@ impl Context {
             point_count,
             rotation,
             origin,
+            color,
+            &mut self.device,
+        );
+    }
+
+    pub fn draw_circle_textured(
+        &mut self,
+        position: Vec2,
+        radius: f32,
+        point_count: u32,
+        rotation: f32,
+        origin: Vec2,
+        texture_bg: &BindGroup,
+    ) {
+        self.graphics.draw_circle_textured(
+            position,
+            radius,
+            point_count,
+            rotation,
+            origin,
+            texture_bg,
+            &mut self.device,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_circle_textured_ext(
+        &mut self,
+        position: Vec2,
+        radius: f32,
+        point_count: u32,
+        rotation: f32,
+        origin: Vec2,
+        texture_bg: &BindGroup,
+        texture_rect: Rect,
+        color: Color,
+    ) {
+        self.graphics.draw_circle_textured_ext(
+            position,
+            radius,
+            point_count,
+            rotation,
+            origin,
+            texture_bg,
+            texture_rect,
             color,
             &mut self.device,
         );

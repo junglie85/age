@@ -120,9 +120,28 @@ impl Game for Sandbox {
         ctx.draw_line(v2(500.0, 250.0), v2(700.0, 700.0), v2(0.0, 2.5), 5.0, Color::RED);
 
         ctx.draw_circle_filled(v2(0.0, 400.0), 100.0, 30, 0.0, Vec2::ZERO, Color::YELLOW);
-        // ctx.draw_circle();
-        // ctx.draw_circle_textured();
-        // ctx.draw_circle_textured_ext();
+        ctx.draw_circle(v2(0.0, 400.0), 100.0, 30, 0.0, Vec2::ZERO, 10.0, Color::WHITE);
+
+        ctx.draw_circle_filled(v2(400.0, 400.0), 50.0, 3, 0.0, Vec2::ZERO, Color::GREEN);
+        let angle = 0.0_f32;
+        let (sine, cosine) = angle.sin_cos();
+        let position = v2(450.0, 450.0) + v2(50.0 * sine, 50.0 * cosine);
+        ctx.draw_line(v2(450.0, 450.0), position, v2(0.0, 2.0), 2.0, Color::RED);
+        ctx.draw_circle(v2(400.0, 400.0), 50.0, 3, 0.0, Vec2::ZERO, 5.0, Color::BLACK);
+
+        ctx.draw_circle_textured(v2(0.0, 700.0), 100.0, 30, 0.0, Vec2::ZERO, &self.fighter_bg);
+        ctx.draw_circle_textured_ext(
+            v2(300.0, 700.0),
+            100.0,
+            30,
+            0.0,
+            Vec2::ZERO,
+            &self.fighter_bg,
+            Rect::new(v2(0.25, 0.25), v2(0.5, 0.5)),
+            Color::RED,
+        );
+
+        ctx.draw_box_filled(v2(30.0, 500.0), 0.0, v2(100.0, 300.0), Vec2::ZERO, Color::rgba_u8(255, 0, 0, 100));
     }
 
     fn on_stop(&mut self, _ctx: &mut Context) {}

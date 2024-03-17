@@ -301,17 +301,31 @@ impl Graphics {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn draw_circle_filled(
+    pub fn draw_circle(
         &mut self,
         position: Vec2,
         radius: f32,
         point_count: u32,
         rotation: f32,
         origin: Vec2,
+        thickness: f32,
         color: Color,
         device: &mut RenderDevice,
     ) {
-        let circle = &self.meshes.circles[&point_count]; // todo: create if does not exist.
+        let outline = &self
+            .meshes
+            .circle_outlines
+            .entry(point_count)
+            .or_insert_with(|| {
+                let (vertices, _) = compute_circle(point_count as usize);
+                let (vertices, indices) = compute_outline(&vertices);
+                Mesh::new(
+                    &vertices,
+                    &indices,
+                    Some(&format!("circle {} outline", point_count)),
+                    device,
+                )
+            });
         let scale = Vec2::splat(radius);
 
         draw(
@@ -323,6 +337,125 @@ impl Graphics {
             color,
             &self.default_texture_bg,
             Rect::new(Vec2::ZERO, Vec2::ONE),
+            &outline.vbo,
+            [Self::VERTEX_TYPE_OUTLINE, thickness, 0.0, 0.0],
+            &outline.ibo,
+            outline.indices,
+            device,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_circle_filled(
+        &mut self,
+        position: Vec2,
+        radius: f32,
+        point_count: u32,
+        rotation: f32,
+        origin: Vec2,
+        color: Color,
+        device: &mut RenderDevice,
+    ) {
+        let circle = &self.meshes.circles.entry(point_count).or_insert_with(|| {
+            let (vertices, indices) = compute_circle(point_count as usize);
+            Mesh::new(
+                &vertices,
+                &indices,
+                Some(&format!("circle {}", point_count)),
+                device,
+            )
+        });
+        let scale = Vec2::splat(radius);
+
+        draw(
+            &mut self.draw_state,
+            position + scale, // We add scale here so that default origin is top-left corner of bounding box.
+            rotation,
+            scale,
+            origin,
+            color,
+            &self.default_texture_bg,
+            Rect::new(Vec2::ZERO, Vec2::ONE),
+            &circle.vbo,
+            [Self::VERTEX_TYPE_FILL, 0.0, 0.0, 0.0],
+            &circle.ibo,
+            circle.indices,
+            device,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_circle_textured(
+        &mut self,
+        position: Vec2,
+        radius: f32,
+        point_count: u32,
+        rotation: f32,
+        origin: Vec2,
+        texture_bg: &BindGroup,
+        device: &mut RenderDevice,
+    ) {
+        let circle = &self.meshes.circles.entry(point_count).or_insert_with(|| {
+            let (vertices, indices) = compute_circle(point_count as usize);
+            Mesh::new(
+                &vertices,
+                &indices,
+                Some(&format!("circle {}", point_count)),
+                device,
+            )
+        });
+        let scale = Vec2::splat(radius);
+
+        draw(
+            &mut self.draw_state,
+            position + scale, // We add scale here so that default origin is top-left corner of bounding box.
+            rotation,
+            scale,
+            origin,
+            Color::WHITE,
+            texture_bg,
+            Rect::new(Vec2::ZERO, Vec2::ONE),
+            &circle.vbo,
+            [Self::VERTEX_TYPE_FILL, 0.0, 0.0, 0.0],
+            &circle.ibo,
+            circle.indices,
+            device,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_circle_textured_ext(
+        &mut self,
+        position: Vec2,
+        radius: f32,
+        point_count: u32,
+        rotation: f32,
+        origin: Vec2,
+        texture_bg: &BindGroup,
+        texture_rect: Rect,
+        color: Color,
+        device: &mut RenderDevice,
+    ) {
+        let circle = &self.meshes.circles.entry(point_count).or_insert_with(|| {
+            let (vertices, indices) = compute_circle(point_count as usize);
+            Mesh::new(
+                &vertices,
+                &indices,
+                Some(&format!("circle {}", point_count)),
+                device,
+            )
+        });
+        let scale = Vec2::splat(radius);
+
+        draw(
+            &mut self.draw_state,
+            position + scale, // We add scale here so that default origin is top-left corner of bounding box.
+            rotation,
+            scale,
+            origin,
+            color,
+            texture_bg,
+            texture_rect,
             &circle.vbo,
             [Self::VERTEX_TYPE_FILL, 0.0, 0.0, 0.0],
             &circle.ibo,
@@ -533,7 +666,7 @@ pub struct PushConstant {
     pub info: [f32; 4], // [0 => vertex type, 1 => thickness, 2 => unused, 3 => unused]
 }
 
-#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+#[derive(Debug, Default, Clone, Copy, Pod, Zeroable)]
 #[repr(C)]
 pub struct Vertex {
     pub position: [f32; 2],
@@ -596,7 +729,7 @@ impl Mesh {
         });
 
         device.write_buffer(&vbo, vertices);
-        device.write_buffer(&ibo, indices);
+        device.write_buffer(&ibo, &aligned_indices);
 
         Self {
             vbo,
@@ -610,6 +743,7 @@ struct Meshes {
     rect: Mesh,
     rect_outline: Mesh,
     circles: HashMap<u32, Mesh>,
+    circle_outlines: HashMap<u32, Mesh>,
 }
 
 impl Meshes {
@@ -632,10 +766,16 @@ impl Meshes {
         let circle = Mesh::new(&vertices, &indices, Some("circle 30"), device);
         circles.insert(30, circle);
 
+        let mut circle_outlines = HashMap::new();
+        let (vertices, indices) = compute_outline(&vertices);
+        let circle_outline = Mesh::new(&vertices, &indices, Some("circle 30 outline"), device);
+        circle_outlines.insert(30, circle_outline);
+
         Self {
             rect,
             rect_outline,
             circles,
+            circle_outlines,
         }
     }
 }
@@ -644,12 +784,14 @@ fn compute_circle(point_count: usize) -> (Vec<Vertex>, Vec<u16>) {
     let mut vertices = vec![v([0.0, 0.0], [0.0, 0.0], [0.0, 0.0]); point_count];
     let mut indices = vec![0_u16; (point_count - 2) * 3];
 
-    for i in 0..point_count {
+    for (i, vertex) in vertices.iter_mut().enumerate() {
         let angle = (i as f32 / point_count as f32) * 360.0_f32.to_radians();
         let (sine, cosine) = angle.sin_cos();
         let position = v2(sine, cosine);
 
-        vertices[i].position = position.to_array();
+        vertex.position = position.to_array();
+        // Take the unit circle which is in range -1.0..=1.0 and map into range 0.0..=1.0.
+        vertex.uv = ((position + Vec2::ONE) / 2.0).to_array();
     }
 
     for i in 0..point_count - 2 {

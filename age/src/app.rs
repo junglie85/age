@@ -256,6 +256,18 @@ impl Context {
         self.graphics.clear(color);
     }
 
+    pub fn draw_line(
+        &mut self,
+        pos1: Vec2,
+        pos2: Vec2,
+        origin: Vec2,
+        thickness: f32,
+        color: Color,
+    ) {
+        self.graphics
+            .draw_line(pos1, pos2, origin, thickness, color, &mut self.device)
+    }
+
     pub fn draw_box(
         &mut self,
         position: Vec2,

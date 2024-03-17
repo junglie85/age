@@ -165,6 +165,32 @@ impl Graphics {
         self.draw_state.clear_color = Some(color);
     }
 
+    pub fn draw_line(
+        &mut self,
+        pos1: Vec2,
+        pos2: Vec2,
+        origin: Vec2,
+        thickness: f32,
+        color: Color,
+        device: &mut RenderDevice,
+    ) {
+        let distance = pos2 - pos1;
+        let rotation = distance.y.atan2(distance.x);
+        // let distance = (pos2 - pos1).length();
+        // let dot = pos1.dot(pos2);
+        // let len1 = pos1.length();
+        // let len2 = pos2.length();
+        // let rotation = (dot / (len1 * len2)).acos();
+        self.draw_box_filled(
+            pos1,
+            rotation,
+            v2(distance.length(), thickness),
+            origin,
+            color,
+            device,
+        );
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn draw_box(
         &mut self,

@@ -86,6 +86,7 @@ impl Game for Sandbox {
         // ctx.set_draw_target(target);
         // ctx.set_render_pipeline(pipeline);
         ctx.clear(Color::BLUE);
+
         ctx.draw_box_filled(v2(200.0, 100.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), Color::YELLOW);
         ctx.draw_box(v2(200.0, 100.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), 10.0, Color::BLACK);
         ctx.draw_box_filled(v2(300.0, 150.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), Color::RED);
@@ -114,6 +115,8 @@ impl Game for Sandbox {
             Rect::new(v2(0.5, 0.0), v2(0.5, 0.5)),
             Color::WHITE,
         );
+
+        ctx.draw_line(v2(500.0, 250.0), v2(700.0, 700.0), v2(0.0, 2.5), 5.0, Color::RED);
     }
 
     fn on_stop(&mut self, _ctx: &mut Context) {}

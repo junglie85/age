@@ -108,6 +108,15 @@ impl RenderDevice {
         })
     }
 
+    pub fn limits(&self) -> Limits {
+        let limits = self.adapter.limits();
+
+        Limits {
+            max_push_constant_size: limits.max_push_constant_size,
+            max_texture_dimension_2d: limits.max_texture_dimension_2d,
+        }
+    }
+
     pub(crate) fn begin_frame(&mut self) {
         // Can't clear here because we hold on to a surface texture view which prevents recreating the window surface.
         // self.command_buffer.clear();
@@ -508,6 +517,11 @@ impl RenderDevice {
             size,
         );
     }
+}
+
+pub struct Limits {
+    pub max_push_constant_size: u32,
+    pub max_texture_dimension_2d: u32,
 }
 
 pub struct BindGroupLayoutInfo<'info> {
@@ -1012,6 +1026,7 @@ impl PartialEq for Shader {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TextureFormat {
+    R8Unorm,
     Bgra8Unorm,
     Bgra8UnormSrgb,
     Rgba8Unorm,
@@ -1029,6 +1044,7 @@ impl TextureFormat {
 impl From<TextureFormat> for wgpu::TextureFormat {
     fn from(format: TextureFormat) -> Self {
         match format {
+            TextureFormat::R8Unorm => wgpu::TextureFormat::R8Unorm,
             TextureFormat::Bgra8Unorm => wgpu::TextureFormat::Bgra8Unorm,
             TextureFormat::Bgra8UnormSrgb => wgpu::TextureFormat::Bgra8UnormSrgb,
             TextureFormat::Rgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
@@ -1042,6 +1058,7 @@ impl TryFrom<wgpu::TextureFormat> for TextureFormat {
 
     fn try_from(format: wgpu::TextureFormat) -> Result<Self, Self::Error> {
         match format {
+            wgpu::TextureFormat::R8Unorm => Ok(TextureFormat::R8Unorm),
             wgpu::TextureFormat::Bgra8Unorm => Ok(TextureFormat::Bgra8Unorm),
             wgpu::TextureFormat::Bgra8UnormSrgb => Ok(TextureFormat::Bgra8UnormSrgb),
             wgpu::TextureFormat::Rgba8Unorm => Ok(TextureFormat::Rgba8Unorm),

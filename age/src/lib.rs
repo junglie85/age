@@ -1,14 +1,18 @@
 mod app;
 mod error;
+mod font;
 mod graphics;
 mod image;
 mod os;
+mod packer;
 mod renderer;
 
 pub use app::{App, AppBuilder, Context};
 pub use error::{AgeError, AgeResult};
+pub use font::{CharSet, Font, Glyph, SpriteFont};
 pub use graphics::{Camera, Rect, Sprite, Vertex};
 pub use image::Image;
+pub use packer::{Entry, PackerInfo, TexturePacker};
 pub use renderer::{
     align_to, AddressMode, BindGroup, BindGroupId, BindGroupInfo, BindGroupLayout,
     BindGroupLayoutId, BindGroupLayoutInfo, Binding, BindingType, Buffer, BufferId, BufferInfo,

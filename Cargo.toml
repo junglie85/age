@@ -11,6 +11,7 @@ age = { version = "0.1.0", path = "./age" }
 age_math = { version = "0.1.0", path = "./age_math" }
 
 bytemuck = { version = "1.14.3", features = ["derive"] }
+fontdue = "0.8.0"
 image = "0.25.0"
 pollster = "0.3.0"
 wgpu = "0.19.1"

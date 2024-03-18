@@ -16,7 +16,7 @@ use crate::{
         PipelineLayoutInfo, RenderDevice, RenderPipeline, RenderPipelineInfo, Sampler, ShaderInfo,
         Texture, TextureFormat, VertexBufferLayout, VertexFormat, VertexType,
     },
-    AddressMode, FilterMode, SamplerInfo, TextureInfo, TextureView, TextureViewInfo,
+    AddressMode, FilterMode, SamplerInfo, SpriteFont, TextureInfo, TextureView, TextureViewInfo,
 };
 
 pub struct Graphics {
@@ -37,6 +37,7 @@ pub struct Graphics {
 impl Graphics {
     pub const VERTEX_TYPE_FILL: f32 = 1.0;
     pub const VERTEX_TYPE_OUTLINE: f32 = 2.0;
+    pub const VERTEX_TYPE_TEXT: f32 = 3.0;
 
     pub(crate) fn new(left: f32, right: f32, bottom: f32, top: f32, device: &RenderDevice) -> Self {
         let shader = device.create_shader(&ShaderInfo {
@@ -519,6 +520,74 @@ impl Graphics {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_string(
+        &mut self,
+        position: Vec2,
+        size: f32,
+        rotation: f32,
+        font: &SpriteFont,
+        text: &str,
+        justify: Vec2,
+        color: Color,
+        device: &mut RenderDevice,
+    ) {
+        let scale = size / font.size();
+        // self.push_matrix(Mat4::trs(pos, 0.0, Vec2f::splat(scale)));
+
+        let ascent = font.ascent();
+        let descent = font.descent();
+
+        let mut offset = v2(0.0, ascent + descent);
+        if justify != Vec2::ZERO {
+            offset -= v2(font.width_of_line(text, 0), font.height_of(text)) * justify;
+        }
+
+        let mut last = None;
+        for (i, c) in text.chars().enumerate() {
+            if c == '\n' {
+                offset.x = 0.0;
+                let lh = font.line_height();
+                offset.y += lh;
+
+                if justify.x != 0.0 {
+                    offset.x -= font.width_of_line(text, i + 1) * justify.x;
+                }
+
+                last = None;
+            } else if let Some(glyph) = font.glyph(c) {
+                let mut pos = offset + glyph.offset;
+                if let Some(last) = last {
+                    pos.x += font.kerning(last, c);
+                }
+
+                let texture = font.texture(glyph);
+                let texture_size = v2(texture.width() as f32, texture.height() as f32);
+                let texture_scale = texture_size * glyph.tex_rect.size * Vec2::splat(scale);
+                draw(
+                    &mut self.draw_state,
+                    position + pos * scale,
+                    rotation, // todo: how do we rotate the whole text? maybe move the origin by -pos?
+                    texture_scale,
+                    Vec2::ZERO,
+                    color,
+                    font.bind_group(glyph),
+                    glyph.tex_rect,
+                    &self.meshes.rect.vbo,
+                    [Self::VERTEX_TYPE_TEXT, 0.0, 0.0, 0.0],
+                    &self.meshes.rect.ibo,
+                    self.meshes.rect.indices,
+                    device,
+                );
+
+                offset.x += glyph.advance;
+                last = Some(c);
+            }
+        }
+
+        // self.pop_matrix();
+    }
+
     pub fn create_sprite(
         &self,
         texture: &Texture,
@@ -949,6 +1018,7 @@ fn geometric_center(vertices: &[Vertex]) -> Vec2 {
     sum_center / sum_weight
 }
 
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Rect {
     pub position: Vec2,
     pub size: Vec2,

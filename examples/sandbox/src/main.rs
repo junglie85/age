@@ -1,6 +1,6 @@
 use age::{
-    AgeResult, App, BindGroup, BindGroupInfo, Binding, Color, Context, Game, Image, Rect, Sprite, Texture,
-    TextureFormat, TextureInfo, TextureView, TextureViewInfo,
+    AgeResult, App, BindGroup, BindGroupInfo, Binding, CharSet, Color, Context, Font, Game, Image, Rect, Sprite,
+    SpriteFont, Texture, TextureFormat, TextureInfo, TextureView, TextureViewInfo,
 };
 use age_math::v2;
 use glam::Vec2;
@@ -16,6 +16,7 @@ struct Sandbox {
     fighter_view: TextureView,
     fighter_bg: BindGroup,
     sprite: Sprite,
+    sprite_font: SpriteFont,
 }
 
 impl Sandbox {
@@ -75,6 +76,16 @@ impl Sandbox {
         let mut sprite = ctx.create_sprite_from_image(&escort_img, Some("escort"));
         sprite.set_origin(sprite.size() / 2.0);
 
+        let font_data = include_bytes!("OpenSans-Regular.ttf");
+        let mut font = Font::from_bytes(font_data)?;
+        let sprite_font = font.load_charset(
+            36.0,
+            CharSet::ASCII,
+            ctx.graphics().texture_bind_group_layout(),
+            ctx.graphics().default_sampler(),
+            ctx.render_device(),
+        )?;
+
         Ok(Self {
             grid,
             grid_view,
@@ -83,6 +94,7 @@ impl Sandbox {
             fighter_view,
             fighter_bg,
             sprite,
+            sprite_font,
         })
     }
 }
@@ -158,6 +170,16 @@ impl Game for Sandbox {
             &self.sprite,
             Rect::new(v2(0.0, 0.0), v2(1.0, 0.5)),
             Color::GREEN,
+        );
+
+        ctx.draw_string(
+            v2(800.0, 300.0),
+            36.0,
+            0.0,
+            &self.sprite_font,
+            "Ashley's Game Engine",
+            Vec2::ZERO,
+            Color::WHITE,
         );
     }
 

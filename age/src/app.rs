@@ -11,7 +11,8 @@ use crate::{
     graphics::Graphics,
     os,
     renderer::{Color, DrawTarget, RenderDevice, RenderPipeline, WindowSurface, WindowTarget},
-    AgeResult, BindGroup, Camera, Game, Image, Rect, Sprite, TextureFormat, TextureInfo,
+    AgeResult, BindGroup, Camera, Game, Image, Rect, Sprite, SpriteFont, TextureFormat,
+    TextureInfo,
 };
 
 pub(crate) struct AppConfig {
@@ -457,6 +458,29 @@ impl Context {
             scale,
             sprite,
             texture_rect,
+            color,
+            &mut self.device,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_string(
+        &mut self,
+        position: Vec2,
+        size: f32,
+        rotation: f32,
+        font: &SpriteFont,
+        text: &str,
+        justify: Vec2,
+        color: Color,
+    ) {
+        self.graphics.draw_string(
+            position,
+            size,
+            rotation,
+            font,
+            text,
+            justify,
             color,
             &mut self.device,
         );

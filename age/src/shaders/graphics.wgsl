@@ -35,7 +35,6 @@ var<push_constant> r_pc: PushConstant;
 @vertex
 fn vs_main(vertex: Vertex) -> VsOut {
     let ty = r_pc.info.x;
-    let is_fill = select(false, true, ty >= 0.5 && ty < 1.5);
     let is_outline = select(false, true, ty >= 1.5 && ty < 2.5);
 
     let model = r_pc.model;
@@ -61,6 +60,22 @@ fn vs_main(vertex: Vertex) -> VsOut {
 
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-    let sample = textureSample(r_texture, r_sampler, in.uv) ;
-    return sample * in.color;
+    let ty = r_pc.info.x;
+    let is_fill = select(false, true, ty >= 0.5 && ty < 1.5);
+    let is_outline = select(false, true, ty >= 1.5 && ty < 2.5);
+    let is_text = select(false, true, ty >= 2.5 && ty < 3.5);
+
+    var color = vec4(0.0, 0.0, 0.0, 0.0);
+    if is_fill || is_outline {
+        let sample = textureSample(r_texture, r_sampler, in.uv);
+        color = in.color * sample;
+    } else if is_text {
+        let alpha = textureSample(r_texture, r_sampler, in.uv).r;
+        if (alpha <= 0.0) {
+            discard;
+        }
+        color = in.color * vec4(1.0, 1.0, 1.0, alpha);
+    }
+
+    return color;
 }

@@ -107,18 +107,19 @@ impl Game for Sandbox {
         // ctx.set_render_pipeline(pipeline);
         ctx.clear(Color::BLUE);
 
-        ctx.draw_box_filled(v2(200.0, 100.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), Color::YELLOW);
-        ctx.draw_box(v2(200.0, 100.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), 10.0, Color::BLACK);
-        ctx.draw_box_filled(v2(300.0, 150.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), Color::RED);
-        ctx.draw_box_textured(v2(300.0, 150.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), &self.grid_bg);
-        ctx.draw_box_textured(
+        // ctx.push_matrix(); // todo: we can use this to set a base transform that all other positions, rotations, etc, are set from.
+        ctx.draw_filled_rect(v2(200.0, 100.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), Color::YELLOW);
+        ctx.draw_rect(v2(200.0, 100.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), 10.0, Color::BLACK);
+        ctx.draw_filled_rect(v2(300.0, 150.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), Color::RED);
+        ctx.draw_textured_rect(v2(300.0, 150.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), &self.grid_bg);
+        ctx.draw_textured_rect(
             v2(600.0, 600.0),
             30.0_f32.to_radians(),
             v2(self.fighter.size().0 as f32, self.fighter.size().1 as f32), // todo: impl into Vec2
             v2(self.fighter.size().0 as f32 / 2.0, self.fighter.size().1 as f32 / 2.0),
             &self.fighter_bg,
         );
-        ctx.draw_box(
+        ctx.draw_rect(
             v2(600.0, 600.0),
             30.0_f32.to_radians(),
             v2(self.fighter.size().0 as f32, self.fighter.size().1 as f32),
@@ -126,7 +127,7 @@ impl Game for Sandbox {
             2.0,
             Color::BLACK,
         );
-        ctx.draw_box_textured_ext(
+        ctx.draw_textured_rect_ext(
             v2(700.0, 700.0),
             0.0,
             v2(self.fighter.size().0 as f32, self.fighter.size().1 as f32),
@@ -136,20 +137,21 @@ impl Game for Sandbox {
             Color::WHITE,
         );
 
-        ctx.draw_line(v2(500.0, 250.0), v2(700.0, 700.0), v2(0.0, 2.5), 5.0, Color::RED);
+        ctx.draw_line(v2(500.0, 250.0), v2(700.0, 700.0), 5.0, Color::RED);
+        ctx.draw_line_from(v2(700.0, 700.0), 90.0, 150.0, 5.0, Color::GREEN);
 
-        ctx.draw_circle_filled(v2(0.0, 400.0), 100.0, 30, 0.0, Vec2::ZERO, Color::YELLOW);
+        ctx.draw_filled_circle(v2(0.0, 400.0), 100.0, 30, 0.0, Vec2::ZERO, Color::YELLOW);
         ctx.draw_circle(v2(0.0, 400.0), 100.0, 30, 0.0, Vec2::ZERO, 10.0, Color::WHITE);
 
-        ctx.draw_circle_filled(v2(400.0, 400.0), 50.0, 3, 0.0, Vec2::ZERO, Color::GREEN);
+        ctx.draw_filled_circle(v2(400.0, 400.0), 50.0, 3, 0.0, Vec2::ZERO, Color::GREEN);
         let angle = 0.0_f32;
         let (sine, cosine) = angle.sin_cos();
         let position = v2(450.0, 450.0) + v2(50.0 * sine, 50.0 * cosine);
-        ctx.draw_line(v2(450.0, 450.0), position, v2(0.0, 2.0), 2.0, Color::RED);
+        ctx.draw_line_ext(v2(450.0, 450.0), position, v2(0.0, 2.0), 2.0, Color::RED);
         ctx.draw_circle(v2(400.0, 400.0), 50.0, 3, 0.0, Vec2::ZERO, 5.0, Color::BLACK);
 
-        ctx.draw_circle_textured(v2(0.0, 700.0), 100.0, 30, 0.0, Vec2::ZERO, &self.fighter_bg);
-        ctx.draw_circle_textured_ext(
+        ctx.draw_textured_circle(v2(0.0, 700.0), 100.0, 30, 0.0, Vec2::ZERO, &self.fighter_bg);
+        ctx.draw_textured_circle_ext(
             v2(300.0, 700.0),
             100.0,
             30,
@@ -160,27 +162,20 @@ impl Game for Sandbox {
             Color::RED,
         );
 
-        ctx.draw_box_filled(v2(30.0, 500.0), 0.0, v2(100.0, 300.0), Vec2::ZERO, Color::rgba_u8(255, 0, 0, 100));
+        ctx.draw_filled_rect(v2(30.0, 500.0), 0.0, v2(100.0, 300.0), Vec2::ZERO, Color::rgba_u8(255, 0, 0, 100));
 
-        ctx.draw_sprite(v2(600.0, 100.0), 0.0, Vec2::ONE, &self.sprite);
+        ctx.draw_sprite(&self.sprite, v2(600.0, 100.0), 0.0);
         ctx.draw_sprite_ext(
-            v2(600.0, 100.0),
-            0.0,
-            Vec2::ONE,
             &self.sprite,
             Rect::new(v2(0.0, 0.0), v2(1.0, 0.5)),
             Color::GREEN,
+            v2(600.0, 100.0),
+            0.0,
+            Vec2::ONE,
         );
 
-        ctx.draw_string(
-            v2(800.0, 300.0),
-            36.0,
-            0.0,
-            &self.sprite_font,
-            "Ashley's Game Engine",
-            Vec2::ZERO,
-            Color::WHITE,
-        );
+        ctx.draw_string(&self.sprite_font, "Ashley's Game Engine", 36.0, Color::WHITE, v2(800.0, 300.0));
+        ctx.draw_string_ext(&self.sprite_font, "Sandbox", 36.0, Color::WHITE, v2(800.0, 340.0), Vec2::ZERO);
     }
 
     fn on_stop(&mut self, _ctx: &mut Context) {}

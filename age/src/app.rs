@@ -265,19 +265,56 @@ impl Context {
         self.graphics.clear(color);
     }
 
-    pub fn draw_line(
+    pub fn draw_line(&mut self, from: Vec2, to: Vec2, thickness: f32, color: Color) {
+        self.graphics
+            .draw_line(from, to, thickness, color, &mut self.device);
+    }
+
+    pub fn draw_line_ext(
         &mut self,
-        pos1: Vec2,
-        pos2: Vec2,
+        from: Vec2,
+        to: Vec2,
         origin: Vec2,
         thickness: f32,
         color: Color,
     ) {
         self.graphics
-            .draw_line(pos1, pos2, origin, thickness, color, &mut self.device)
+            .draw_line_ext(from, to, origin, thickness, color, &mut self.device);
     }
 
-    pub fn draw_box(
+    pub fn draw_line_from(
+        &mut self,
+        position: Vec2,
+        angle: f32,
+        length: f32,
+        thickness: f32,
+        color: Color,
+    ) {
+        self.graphics
+            .draw_line_from(position, angle, length, thickness, color, &mut self.device);
+    }
+
+    pub fn draw_line_from_ext(
+        &mut self,
+        position: Vec2,
+        angle: f32,
+        length: f32,
+        thickness: f32,
+        color: Color,
+        origin: Vec2,
+    ) {
+        self.graphics.draw_line_from_ext(
+            position,
+            angle,
+            length,
+            thickness,
+            color,
+            origin,
+            &mut self.device,
+        );
+    }
+
+    pub fn draw_rect(
         &mut self,
         position: Vec2,
         rotation: f32,
@@ -286,7 +323,7 @@ impl Context {
         thickness: f32,
         color: Color,
     ) {
-        self.graphics.draw_box(
+        self.graphics.draw_rect(
             position,
             rotation,
             scale,
@@ -297,7 +334,7 @@ impl Context {
         );
     }
 
-    pub fn draw_box_filled(
+    pub fn draw_filled_rect(
         &mut self,
         position: Vec2,
         rotation: f32,
@@ -306,10 +343,10 @@ impl Context {
         color: Color,
     ) {
         self.graphics
-            .draw_box_filled(position, rotation, scale, origin, color, &mut self.device);
+            .draw_filled_rect(position, rotation, scale, origin, color, &mut self.device);
     }
 
-    pub fn draw_box_textured(
+    pub fn draw_textured_rect(
         &mut self,
         position: Vec2,
         rotation: f32,
@@ -317,7 +354,7 @@ impl Context {
         origin: Vec2,
         texture_bg: &BindGroup,
     ) {
-        self.graphics.draw_box_textured(
+        self.graphics.draw_textured_rect(
             position,
             rotation,
             scale,
@@ -328,7 +365,7 @@ impl Context {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn draw_box_textured_ext(
+    pub fn draw_textured_rect_ext(
         &mut self,
         position: Vec2,
         rotation: f32,
@@ -338,7 +375,7 @@ impl Context {
         texture_rect: Rect,
         color: Color,
     ) {
-        self.graphics.draw_box_textured_ext(
+        self.graphics.draw_textured_rect_ext(
             position,
             rotation,
             scale,
@@ -373,7 +410,7 @@ impl Context {
         );
     }
 
-    pub fn draw_circle_filled(
+    pub fn draw_filled_circle(
         &mut self,
         position: Vec2,
         radius: f32,
@@ -382,7 +419,7 @@ impl Context {
         origin: Vec2,
         color: Color,
     ) {
-        self.graphics.draw_circle_filled(
+        self.graphics.draw_filled_circle(
             position,
             radius,
             point_count,
@@ -393,7 +430,7 @@ impl Context {
         );
     }
 
-    pub fn draw_circle_textured(
+    pub fn draw_textured_circle(
         &mut self,
         position: Vec2,
         radius: f32,
@@ -402,7 +439,7 @@ impl Context {
         origin: Vec2,
         texture_bg: &BindGroup,
     ) {
-        self.graphics.draw_circle_textured(
+        self.graphics.draw_textured_circle(
             position,
             radius,
             point_count,
@@ -414,7 +451,7 @@ impl Context {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn draw_circle_textured_ext(
+    pub fn draw_textured_circle_ext(
         &mut self,
         position: Vec2,
         radius: f32,
@@ -425,7 +462,7 @@ impl Context {
         texture_rect: Rect,
         color: Color,
     ) {
-        self.graphics.draw_circle_textured_ext(
+        self.graphics.draw_textured_circle_ext(
             position,
             radius,
             point_count,
@@ -438,51 +475,53 @@ impl Context {
         );
     }
 
-    pub fn draw_sprite(&mut self, position: Vec2, rotation: f32, scale: Vec2, sprite: &Sprite) {
+    pub fn draw_sprite(&mut self, sprite: &Sprite, position: Vec2, rotation: f32) {
         self.graphics
-            .draw_sprite(position, rotation, scale, sprite, &mut self.device);
+            .draw_sprite(sprite, position, rotation, &mut self.device);
     }
 
     pub fn draw_sprite_ext(
         &mut self,
-        position: Vec2,
-        rotation: f32,
-        scale: Vec2,
         sprite: &Sprite,
         texture_rect: Rect,
         color: Color,
+        position: Vec2,
+        rotation: f32,
+        scale: Vec2,
     ) {
         self.graphics.draw_sprite_ext(
-            position,
-            rotation,
-            scale,
             sprite,
             texture_rect,
             color,
+            position,
+            rotation,
+            scale,
             &mut self.device,
         );
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn draw_string(
         &mut self,
-        position: Vec2,
-        size: f32,
-        rotation: f32,
         font: &SpriteFont,
         text: &str,
-        justify: Vec2,
+        size: f32,
         color: Color,
+        position: Vec2,
     ) {
-        self.graphics.draw_string(
-            position,
-            size,
-            rotation,
-            font,
-            text,
-            justify,
-            color,
-            &mut self.device,
-        );
+        self.graphics
+            .draw_string(font, text, size, color, position, &mut self.device);
+    }
+
+    pub fn draw_string_ext(
+        &mut self,
+        font: &SpriteFont,
+        text: &str,
+        size: f32,
+        color: Color,
+        position: Vec2,
+        justify: Vec2,
+    ) {
+        self.graphics
+            .draw_string_ext(font, text, size, color, position, justify, &mut self.device);
     }
 }

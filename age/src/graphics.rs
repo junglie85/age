@@ -171,18 +171,39 @@ impl Graphics {
 
     pub fn draw_line(
         &mut self,
-        pos1: Vec2,
-        pos2: Vec2,
+        from: Vec2,
+        to: Vec2,
+        thickness: f32,
+        color: Color,
+        device: &mut RenderDevice,
+    ) {
+        let distance = to - from;
+        let rotation = distance.y.atan2(distance.x);
+
+        self.draw_filled_rect(
+            from,
+            rotation,
+            v2(distance.length(), thickness),
+            Vec2::ZERO,
+            color,
+            device,
+        );
+    }
+
+    pub fn draw_line_ext(
+        &mut self,
+        from: Vec2,
+        to: Vec2,
         origin: Vec2,
         thickness: f32,
         color: Color,
         device: &mut RenderDevice,
     ) {
-        let distance = pos2 - pos1;
+        let distance = to - from;
         let rotation = distance.y.atan2(distance.x);
 
-        self.draw_box_filled(
-            pos1,
+        self.draw_filled_rect(
+            from,
             rotation,
             v2(distance.length(), thickness),
             origin,
@@ -191,8 +212,48 @@ impl Graphics {
         );
     }
 
+    pub fn draw_line_from(
+        &mut self,
+        position: Vec2,
+        angle: f32,
+        length: f32,
+        thickness: f32,
+        color: Color,
+        device: &mut RenderDevice,
+    ) {
+        self.draw_filled_rect(
+            position,
+            angle,
+            v2(length, thickness),
+            Vec2::ZERO,
+            color,
+            device,
+        );
+    }
+
     #[allow(clippy::too_many_arguments)]
-    pub fn draw_box(
+    pub fn draw_line_from_ext(
+        &mut self,
+        position: Vec2,
+        angle: f32,
+        length: f32,
+        thickness: f32,
+        color: Color,
+        origin: Vec2,
+        device: &mut RenderDevice,
+    ) {
+        self.draw_filled_rect(
+            position,
+            angle,
+            v2(length, thickness),
+            origin,
+            color,
+            device,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_rect(
         &mut self,
         position: Vec2,
         rotation: f32,
@@ -219,7 +280,7 @@ impl Graphics {
         );
     }
 
-    pub fn draw_box_filled(
+    pub fn draw_filled_rect(
         &mut self,
         position: Vec2,
         rotation: f32,
@@ -246,7 +307,7 @@ impl Graphics {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn draw_box_textured(
+    pub fn draw_textured_rect(
         &mut self,
         position: Vec2,
         rotation: f32,
@@ -273,7 +334,7 @@ impl Graphics {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn draw_box_textured_ext(
+    pub fn draw_textured_rect_ext(
         &mut self,
         position: Vec2,
         rotation: f32,
@@ -347,7 +408,7 @@ impl Graphics {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn draw_circle_filled(
+    pub fn draw_filled_circle(
         &mut self,
         position: Vec2,
         radius: f32,
@@ -386,7 +447,7 @@ impl Graphics {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn draw_circle_textured(
+    pub fn draw_textured_circle(
         &mut self,
         position: Vec2,
         radius: f32,
@@ -425,7 +486,7 @@ impl Graphics {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn draw_circle_textured_ext(
+    pub fn draw_textured_circle_ext(
         &mut self,
         position: Vec2,
         radius: f32,
@@ -467,18 +528,16 @@ impl Graphics {
 
     pub fn draw_sprite(
         &mut self,
+        sprite: &Sprite,
         position: Vec2,
         rotation: f32,
-        scale: Vec2,
-        sprite: &Sprite,
         device: &mut RenderDevice,
     ) {
-        let scale = sprite.size() * scale;
         draw(
             &mut self.draw_state,
             position,
             rotation,
-            scale,
+            sprite.size(),
             sprite.origin(),
             Color::WHITE,
             sprite.bind_group(),
@@ -494,12 +553,12 @@ impl Graphics {
     #[allow(clippy::too_many_arguments)]
     pub fn draw_sprite_ext(
         &mut self,
-        position: Vec2,
-        rotation: f32,
-        scale: Vec2,
         sprite: &Sprite,
         texture_rect: Rect,
         color: Color,
+        position: Vec2,
+        rotation: f32,
+        scale: Vec2,
         device: &mut RenderDevice,
     ) {
         let scale = sprite.size() * scale * texture_rect.size;
@@ -520,16 +579,27 @@ impl Graphics {
         );
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn draw_string(
         &mut self,
-        position: Vec2,
-        size: f32,
-        rotation: f32,
         font: &SpriteFont,
         text: &str,
-        justify: Vec2,
+        size: f32,
         color: Color,
+        position: Vec2,
+        device: &mut RenderDevice,
+    ) {
+        self.draw_string_ext(font, text, size, color, position, Vec2::ZERO, device)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_string_ext(
+        &mut self,
+        font: &SpriteFont,
+        text: &str,
+        size: f32,
+        color: Color,
+        position: Vec2,
+        justify: Vec2,
         device: &mut RenderDevice,
     ) {
         let scale = size / font.size();
@@ -567,7 +637,7 @@ impl Graphics {
                 draw(
                     &mut self.draw_state,
                     position + pos * scale,
-                    rotation, // todo: how do we rotate the whole text? maybe move the origin by -pos?
+                    0.0, // todo: how do we rotate the whole text? draw to a texture and rotate that.
                     texture_scale,
                     Vec2::ZERO,
                     color,

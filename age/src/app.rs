@@ -11,7 +11,7 @@ use crate::{
     graphics::Graphics,
     os,
     renderer::{Color, DrawTarget, RenderDevice, RenderPipeline, WindowSurface, WindowTarget},
-    AgeResult, BindGroup, Camera, Game, Rect, Sprite,
+    AgeResult, BindGroup, Camera, Game, Image, Rect, Sprite, TextureFormat, TextureInfo,
 };
 
 pub(crate) struct AppConfig {
@@ -75,28 +75,29 @@ impl AppBuilder {
             &device,
         );
 
-        Ok(App {
+        let ctx = Context {
             config: self.config,
-            el,
             el_proxy,
-            window,
             device,
-            surface,
-            window_target,
             graphics,
+            window_target,
+            running: false,
+        };
+
+        Ok(App {
+            el,
+            window,
+            surface,
+            ctx,
         })
     }
 }
 
 pub struct App {
-    config: AppConfig,
     el: EventLoop<AppEvent>,
-    el_proxy: EventLoopProxy<AppEvent>,
     window: Window,
-    device: RenderDevice,
     surface: WindowSurface,
-    window_target: WindowTarget,
-    graphics: Graphics,
+    ctx: Context,
 }
 
 impl App {
@@ -104,36 +105,21 @@ impl App {
         AppBuilder::new(width, height).build()
     }
 
-    pub fn graphics(&self) -> &Graphics {
-        &self.graphics
-    }
-
-    pub fn render_device(&self) -> &RenderDevice {
-        &self.device
+    pub fn context(&self) -> &Context {
+        &self.ctx
     }
 
     pub fn run(self, mut game: impl Game) -> AgeResult {
         let App {
-            config,
             el,
-            el_proxy,
             window,
-            device,
             mut surface,
-            window_target,
-            graphics,
+            mut ctx,
         } = self;
 
         let window = Arc::new(window);
 
-        let mut ctx = Context {
-            config,
-            el_proxy,
-            device,
-            graphics,
-            window_target,
-            running: true,
-        };
+        ctx.running = true;
 
         game.on_start(&mut ctx);
         window.set_visible(true);
@@ -219,6 +205,14 @@ pub struct Context {
 }
 
 impl Context {
+    pub fn graphics(&self) -> &Graphics {
+        &self.graphics
+    }
+
+    pub fn render_device(&self) -> &RenderDevice {
+        &self.device
+    }
+
     pub fn exit(&mut self) {
         self.running = false;
     }
@@ -235,6 +229,20 @@ impl Context {
 }
 
 impl Context {
+    pub fn create_sprite_from_image(&self, image: &Image, label: Option<&str>) -> Sprite {
+        let texture = self.device.create_texture(&TextureInfo {
+            label,
+            width: image.width(),
+            height: image.height(),
+            format: TextureFormat::Rgba8UnormSrgb,
+            ..Default::default()
+        });
+        self.device.write_texture(&texture, image.pixels());
+
+        self.graphics
+            .create_sprite(&texture, self.graphics.default_sampler(), &self.device)
+    }
+
     pub fn create_camera(&self, left: f32, right: f32, bottom: f32, top: f32) -> Camera {
         self.graphics
             .create_camera(left, right, bottom, top, &self.device)

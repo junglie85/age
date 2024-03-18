@@ -19,26 +19,26 @@ struct Sandbox {
 }
 
 impl Sandbox {
-    fn new(app: &App) -> AgeResult<Self> {
+    fn new(ctx: &Context) -> AgeResult<Self> {
         let grid_data = [Color::RED, Color::GREEN, Color::BLUE, Color::YELLOW]
             .iter()
             .flat_map(|c| c.to_array_u8())
             .collect::<Vec<_>>();
-        let grid = app.render_device().create_texture(&TextureInfo {
+        let grid = ctx.render_device().create_texture(&TextureInfo {
             label: Some("grid"),
             width: 2,
             height: 2,
             format: TextureFormat::Rgba8Unorm,
             ..Default::default()
         });
-        app.render_device().write_texture(&grid, &grid_data);
+        ctx.render_device().write_texture(&grid, &grid_data);
         let grid_view = grid.create_view(&TextureViewInfo { label: Some("grid") });
-        let grid_bg = app.render_device().create_bind_group(&BindGroupInfo {
+        let grid_bg = ctx.render_device().create_bind_group(&BindGroupInfo {
             label: Some("grid"),
-            layout: app.graphics().texture_bind_group_layout(),
+            layout: ctx.graphics().texture_bind_group_layout(),
             entries: &[
                 Binding::Sampler {
-                    sampler: app.graphics().default_sampler(),
+                    sampler: ctx.graphics().default_sampler(),
                 },
                 Binding::Texture {
                     texture_view: &grid_view,
@@ -48,21 +48,21 @@ impl Sandbox {
 
         let fighter_data = include_bytes!("space_fighter.png");
         let fighter_img = Image::from_bytes(fighter_data)?;
-        let fighter = app.render_device().create_texture(&TextureInfo {
+        let fighter = ctx.render_device().create_texture(&TextureInfo {
             label: Some("fighter"),
             width: fighter_img.width(),
             height: fighter_img.height(),
             format: TextureFormat::Rgba8UnormSrgb,
             ..Default::default()
         });
-        app.render_device().write_texture(&fighter, fighter_img.pixels());
+        ctx.render_device().write_texture(&fighter, fighter_img.pixels());
         let fighter_view = fighter.create_view(&TextureViewInfo { label: Some("fighter") });
-        let fighter_bg = app.render_device().create_bind_group(&BindGroupInfo {
+        let fighter_bg = ctx.render_device().create_bind_group(&BindGroupInfo {
             label: Some("fighter"),
-            layout: app.graphics().texture_bind_group_layout(),
+            layout: ctx.graphics().texture_bind_group_layout(),
             entries: &[
                 Binding::Sampler {
-                    sampler: app.graphics().default_sampler(),
+                    sampler: ctx.graphics().default_sampler(),
                 },
                 Binding::Texture {
                     texture_view: &fighter_view,
@@ -72,17 +72,7 @@ impl Sandbox {
 
         let escort_data = include_bytes!("escort.png");
         let escort_img = Image::from_bytes(escort_data)?;
-        let escort = app.render_device().create_texture(&TextureInfo {
-            label: Some("escort"),
-            width: escort_img.width(),
-            height: escort_img.height(),
-            format: TextureFormat::Rgba8UnormSrgb,
-            ..Default::default()
-        });
-        app.render_device().write_texture(&escort, escort_img.pixels());
-        let mut sprite = app
-            .graphics()
-            .create_sprite(&escort, app.graphics().default_sampler(), app.render_device());
+        let mut sprite = ctx.create_sprite_from_image(&escort_img, Some("escort"));
         sprite.set_origin(sprite.size() / 2.0);
 
         Ok(Self {
@@ -183,7 +173,7 @@ fn main() {
         return;
     };
 
-    let Ok(sandbox) = Sandbox::new(&app) else {
+    let Ok(sandbox) = Sandbox::new(app.context()) else {
         return;
     };
 

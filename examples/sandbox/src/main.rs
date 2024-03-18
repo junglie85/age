@@ -1,6 +1,6 @@
 use age::{
-    AgeResult, App, BindGroup, BindGroupInfo, Binding, Color, Context, Game, Image, Rect, Texture, TextureFormat,
-    TextureInfo, TextureView, TextureViewInfo,
+    AgeResult, App, BindGroup, BindGroupInfo, Binding, Color, Context, Game, Image, Rect, Sprite, Texture,
+    TextureFormat, TextureInfo, TextureView, TextureViewInfo,
 };
 use age_math::v2;
 use glam::Vec2;
@@ -15,6 +15,7 @@ struct Sandbox {
     #[allow(dead_code)]
     fighter_view: TextureView,
     fighter_bg: BindGroup,
+    sprite: Sprite,
 }
 
 impl Sandbox {
@@ -51,7 +52,7 @@ impl Sandbox {
             label: Some("fighter"),
             width: fighter_img.width(),
             height: fighter_img.height(),
-            format: TextureFormat::Rgba8Unorm,
+            format: TextureFormat::Rgba8UnormSrgb,
             ..Default::default()
         });
         app.render_device().write_texture(&fighter, fighter_img.pixels());
@@ -69,6 +70,21 @@ impl Sandbox {
             ],
         });
 
+        let escort_data = include_bytes!("escort.png");
+        let escort_img = Image::from_bytes(escort_data)?;
+        let escort = app.render_device().create_texture(&TextureInfo {
+            label: Some("escort"),
+            width: escort_img.width(),
+            height: escort_img.height(),
+            format: TextureFormat::Rgba8UnormSrgb,
+            ..Default::default()
+        });
+        app.render_device().write_texture(&escort, escort_img.pixels());
+        let mut sprite = app
+            .graphics()
+            .create_sprite(&escort, app.graphics().default_sampler(), app.render_device());
+        sprite.set_origin(sprite.size() / 2.0);
+
         Ok(Self {
             grid,
             grid_view,
@@ -76,6 +92,7 @@ impl Sandbox {
             fighter,
             fighter_view,
             fighter_bg,
+            sprite,
         })
     }
 }
@@ -142,6 +159,16 @@ impl Game for Sandbox {
         );
 
         ctx.draw_box_filled(v2(30.0, 500.0), 0.0, v2(100.0, 300.0), Vec2::ZERO, Color::rgba_u8(255, 0, 0, 100));
+
+        ctx.draw_sprite(v2(600.0, 100.0), 0.0, Vec2::ONE, &self.sprite);
+        ctx.draw_sprite_ext(
+            v2(600.0, 100.0),
+            0.0,
+            Vec2::ONE,
+            &self.sprite,
+            Rect::new(v2(0.0, 0.0), v2(1.0, 0.5)),
+            Color::GREEN,
+        );
     }
 
     fn on_stop(&mut self, _ctx: &mut Context) {}

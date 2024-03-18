@@ -7,7 +7,7 @@ mod renderer;
 
 pub use app::{App, AppBuilder, Context};
 pub use error::{AgeError, AgeResult};
-pub use graphics::{Camera, Rect, Vertex};
+pub use graphics::{Camera, Rect, Sprite, Vertex};
 pub use image::Image;
 pub use renderer::{
     align_to, AddressMode, BindGroup, BindGroupId, BindGroupInfo, BindGroupLayout,

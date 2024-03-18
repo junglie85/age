@@ -470,6 +470,7 @@ impl RenderDevice {
             sample_count: info.sample_count,
             format: info.format,
             is_renderable: info.renderable,
+            label: info.label.map(|s| s.to_string()),
         }
     }
 
@@ -1114,6 +1115,7 @@ pub struct Texture {
     sample_count: u32,
     format: TextureFormat,
     is_renderable: bool,
+    label: Option<String>,
 }
 
 impl Texture {
@@ -1138,6 +1140,10 @@ impl Texture {
 
     pub fn is_render_texture(&self) -> bool {
         self.is_renderable
+    }
+
+    pub fn label(&self) -> Option<&str> {
+        self.label.as_deref()
     }
 
     pub fn sample_count(&self) -> u32 {

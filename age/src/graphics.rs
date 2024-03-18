@@ -464,6 +464,70 @@ impl Graphics {
         );
     }
 
+    pub fn draw_sprite(
+        &mut self,
+        position: Vec2,
+        rotation: f32,
+        scale: Vec2,
+        sprite: &Sprite,
+        device: &mut RenderDevice,
+    ) {
+        let scale = sprite.size() * scale;
+        draw(
+            &mut self.draw_state,
+            position,
+            rotation,
+            scale,
+            sprite.origin(),
+            Color::WHITE,
+            sprite.bind_group(),
+            Rect::new(Vec2::ZERO, Vec2::ONE),
+            &self.meshes.rect.vbo,
+            [Self::VERTEX_TYPE_FILL, 0.0, 0.0, 0.0],
+            &self.meshes.rect.ibo,
+            self.meshes.rect.indices,
+            device,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_sprite_ext(
+        &mut self,
+        position: Vec2,
+        rotation: f32,
+        scale: Vec2,
+        sprite: &Sprite,
+        texture_rect: Rect,
+        color: Color,
+        device: &mut RenderDevice,
+    ) {
+        let scale = sprite.size() * scale * texture_rect.size;
+        draw(
+            &mut self.draw_state,
+            position,
+            rotation,
+            scale,
+            sprite.origin(),
+            color,
+            sprite.bind_group(),
+            texture_rect,
+            &self.meshes.rect.vbo,
+            [Self::VERTEX_TYPE_FILL, 0.0, 0.0, 0.0],
+            &self.meshes.rect.ibo,
+            self.meshes.rect.indices,
+            device,
+        );
+    }
+
+    pub fn create_sprite(
+        &self,
+        texture: &Texture,
+        sampler: &Sampler,
+        device: &RenderDevice,
+    ) -> Sprite {
+        Sprite::new(texture, sampler, &self.texture_bgl, texture.label(), device)
+    }
+
     pub fn create_camera(
         &self,
         left: f32,
@@ -897,5 +961,60 @@ impl Rect {
 
     pub fn to_array_f32(&self) -> [f32; 4] {
         [self.position.x, self.position.y, self.size.x, self.size.y]
+    }
+}
+
+pub struct Sprite {
+    texture: Texture,
+    #[allow(dead_code)]
+    view: TextureView,
+    bg: BindGroup,
+    origin: Vec2,
+}
+
+impl Sprite {
+    pub fn new(
+        texture: &Texture,
+        sampler: &Sampler,
+        layout: &BindGroupLayout,
+        label: Option<&str>,
+        device: &RenderDevice,
+    ) -> Self {
+        let view = texture.create_view(&TextureViewInfo { label });
+        let bg = device.create_bind_group(&BindGroupInfo {
+            label,
+            layout,
+            entries: &[
+                Binding::Sampler { sampler },
+                Binding::Texture {
+                    texture_view: &view,
+                },
+            ],
+        });
+
+        Self {
+            texture: texture.clone(),
+            view,
+            bg,
+            origin: Vec2::ZERO,
+        }
+    }
+
+    pub fn bind_group(&self) -> &BindGroup {
+        &self.bg
+    }
+
+    pub fn origin(&self) -> Vec2 {
+        self.origin
+    }
+
+    pub fn set_origin(&mut self, origin: Vec2) {
+        self.origin = origin;
+    }
+
+    pub fn size(&self) -> Vec2 {
+        let w = self.texture.width();
+        let h = self.texture.height();
+        v2(w as f32, h as f32)
     }
 }

@@ -11,7 +11,7 @@ use crate::{
     graphics::Graphics,
     os,
     renderer::{Color, DrawTarget, RenderDevice, RenderPipeline, WindowSurface, WindowTarget},
-    AgeResult, BindGroup, Camera, Game, Rect,
+    AgeResult, BindGroup, Camera, Game, Rect, Sprite,
 };
 
 pub(crate) struct AppConfig {
@@ -423,6 +423,31 @@ impl Context {
             rotation,
             origin,
             texture_bg,
+            texture_rect,
+            color,
+            &mut self.device,
+        );
+    }
+
+    pub fn draw_sprite(&mut self, position: Vec2, rotation: f32, scale: Vec2, sprite: &Sprite) {
+        self.graphics
+            .draw_sprite(position, rotation, scale, sprite, &mut self.device);
+    }
+
+    pub fn draw_sprite_ext(
+        &mut self,
+        position: Vec2,
+        rotation: f32,
+        scale: Vec2,
+        sprite: &Sprite,
+        texture_rect: Rect,
+        color: Color,
+    ) {
+        self.graphics.draw_sprite_ext(
+            position,
+            rotation,
+            scale,
+            sprite,
             texture_rect,
             color,
             &mut self.device,

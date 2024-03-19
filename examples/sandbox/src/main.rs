@@ -2,8 +2,7 @@ use age::{
     AgeResult, App, BindGroup, BindGroupInfo, Binding, CharSet, Color, Context, Font, Game, Image, Rect, Sprite,
     SpriteFont, Texture, TextureFormat, TextureInfo, TextureView, TextureViewInfo,
 };
-use age_math::v2;
-use glam::Vec2;
+use age_math::{v2, Mat4, Vec2};
 
 struct Sandbox {
     #[allow(dead_code)]
@@ -107,7 +106,7 @@ impl Game for Sandbox {
         // ctx.set_render_pipeline(pipeline);
         ctx.clear(Color::BLUE);
 
-        // ctx.push_matrix(); // todo: we can use this to set a base transform that all other positions, rotations, etc, are set from.
+        ctx.push_matrix(Mat4::from_translation(v2(500.0, 100.0).extend(0.0)));
         ctx.draw_filled_rect(v2(200.0, 100.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), Color::YELLOW);
         ctx.draw_rect(v2(200.0, 100.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), 10.0, Color::BLACK);
         ctx.draw_filled_rect(v2(300.0, 150.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), Color::RED);

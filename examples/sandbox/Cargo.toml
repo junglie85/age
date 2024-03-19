@@ -6,5 +6,3 @@ edition.workspace = true
 [dependencies]
 age.workspace = true
 age_math.workspace = true
-
-glam = "0.25.0"

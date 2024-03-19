@@ -145,6 +145,27 @@ impl Graphics {
         self.set_render_pipeline(&self.pipeline.clone());
     }
 
+    pub fn push_matrix(&mut self, matrix: Mat4) {
+        self.push_matrix_ext(matrix, false);
+    }
+
+    pub fn push_matrix_ext(&mut self, matrix: Mat4, absolute: bool) {
+        self.draw_state.matrix_stack.push(self.draw_state.matrix);
+        if absolute {
+            self.draw_state.matrix = matrix;
+        } else {
+            self.draw_state.matrix *= matrix;
+        }
+    }
+
+    pub fn pop_matrix(&mut self) -> Mat4 {
+        let previous = self.draw_state.matrix;
+        if let Some(matrix) = self.draw_state.matrix_stack.pop() {
+            self.draw_state.matrix = matrix;
+        }
+        previous
+    }
+
     pub fn set_camera(&mut self, camera: &Camera) {
         let current_camera = match self.draw_state.cameras.iter().find(|&c| c == camera) {
             Some(camera) => camera,
@@ -717,7 +738,8 @@ fn draw(
     bind_groups[1] = Some(texture_bg.clone());
 
     let translation = (position - origin).floor();
-    let model = Mat4::from_translation(translation.extend(0.0))
+    let model = draw_state.matrix
+        * Mat4::from_translation(translation.extend(0.0))
         * Mat4::from_translation(origin.extend(0.0))
         * Mat4::from_rotation_z(rotation)
         * Mat4::from_translation(-origin.extend(0.0))
@@ -753,6 +775,8 @@ fn draw(
 
 #[derive(Default)]
 struct DrawState {
+    matrix: Mat4,
+    matrix_stack: Vec<Mat4>,
     cameras: Vec<Camera>,
     current_camera: Option<BindGroup>,
     clear_color: Option<Color>,

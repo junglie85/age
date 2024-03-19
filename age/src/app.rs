@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use age_math::Vec2;
+use age_math::{Mat4, Vec2};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{EventLoop, EventLoopProxy},
@@ -251,6 +251,22 @@ impl Context {
 
     pub fn default_camera(&self) -> &Camera {
         self.graphics.default_camera()
+    }
+
+    pub fn push_matrix(&mut self, matrix: Mat4) {
+        self.graphics.push_matrix(matrix);
+    }
+
+    pub fn push_matrix_ext(&mut self, matrix: Mat4, absolute: bool) {
+        self.graphics.push_matrix_ext(matrix, absolute);
+    }
+
+    pub fn pop_matrix(&mut self) -> Mat4 {
+        self.graphics.pop_matrix()
+    }
+
+    pub fn set_camera(&mut self, camera: &Camera) {
+        self.graphics.set_camera(camera);
     }
 
     pub fn set_draw_target(&mut self, target: impl Into<DrawTarget>) {

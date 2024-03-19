@@ -149,15 +149,21 @@ impl RenderDevice {
         } in self.command_buffer.commands.iter()
         {
             if Some(&target.color_target) != current_target.as_ref() || clear_color.is_some() {
+                // This assignment is unused but we need to drop the current render pass because
+                // it has an exclusive borrow of encoder.
+                current_rpass = None;
+                // And we need to reset the remaining items (except color target, because that gets set
+                // to the new target) so that we bind the correct resources to the new render pass.
+                current_index_buffer = None;
+                current_vertex_buffers.iter_mut().for_each(|b| *b = None);
+                current_pipeline = None;
+                current_bind_groups.iter_mut().for_each(|bg| *bg = None);
+
                 if Some(&target.color_target) != current_target.as_ref() {
                     current_target = Some(target.color_target.clone());
                 }
 
                 let view = &target.color_target;
-
-                // This assignment is unused but we need to drop the current render pass because
-                // it has an exclusive borrow of encoder.
-                current_rpass = None;
 
                 let ops = Operations {
                     load: match clear_color {
@@ -751,6 +757,19 @@ impl DrawTarget {
     }
 }
 
+impl From<&Texture> for DrawTarget {
+    fn from(texture: &Texture) -> Self {
+        let view = texture.create_view(&TextureViewInfo {
+            label: texture.label(),
+        });
+
+        DrawTarget {
+            color_target: view.clone(),
+            label: texture.label().map(|s| s.to_string()),
+        }
+    }
+}
+
 impl From<&WindowTarget> for DrawTarget {
     fn from(window_target: &WindowTarget) -> Self {
         window_target.draw_target.clone()
@@ -768,7 +787,7 @@ impl TryFrom<&mut WindowSurface> for DrawTarget {
     }
 }
 
-pub(crate) struct WindowTarget {
+pub struct WindowTarget {
     color_target: Texture,
     draw_target: DrawTarget,
     sampler: Sampler,

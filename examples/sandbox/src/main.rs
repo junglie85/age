@@ -16,6 +16,10 @@ struct Sandbox {
     fighter_bg: BindGroup,
     sprite: Sprite,
     sprite_font: SpriteFont,
+    draw_target: Texture,
+    #[allow(dead_code)]
+    draw_target_view: TextureView,
+    draw_target_bg: BindGroup,
 }
 
 impl Sandbox {
@@ -85,6 +89,30 @@ impl Sandbox {
             ctx.render_device(),
         )?;
 
+        let draw_target = ctx.render_device().create_texture(&TextureInfo {
+            label: Some("draw target"),
+            width: ctx.config().width,
+            height: ctx.config().height,
+            format: TextureFormat::Rgba8Unorm,
+            renderable: true,
+            ..Default::default()
+        });
+        let draw_target_view = draw_target.create_view(&TextureViewInfo {
+            label: Some("draw target"),
+        });
+        let draw_target_bg = ctx.render_device().create_bind_group(&BindGroupInfo {
+            label: Some("draw target"),
+            layout: ctx.graphics().texture_bind_group_layout(),
+            entries: &[
+                Binding::Sampler {
+                    sampler: ctx.graphics().default_sampler(),
+                },
+                Binding::Texture {
+                    texture_view: &draw_target_view,
+                },
+            ],
+        });
+
         Ok(Self {
             grid,
             grid_view,
@@ -94,6 +122,9 @@ impl Sandbox {
             fighter_bg,
             sprite,
             sprite_font,
+            draw_target,
+            draw_target_view,
+            draw_target_bg,
         })
     }
 }
@@ -102,8 +133,7 @@ impl Game for Sandbox {
     fn on_start(&mut self, _ctx: &mut Context) {}
 
     fn on_tick(&mut self, ctx: &mut Context) {
-        // ctx.set_draw_target(target);
-        // ctx.set_render_pipeline(pipeline);
+        ctx.set_draw_target(&self.draw_target);
         ctx.clear(Color::BLUE);
 
         ctx.push_matrix(Mat4::from_translation(v2(500.0, 100.0).extend(0.0)));
@@ -175,6 +205,18 @@ impl Game for Sandbox {
 
         ctx.draw_string(&self.sprite_font, "Ashley's Game Engine", 36.0, Color::WHITE, v2(800.0, 300.0));
         ctx.draw_string_ext(&self.sprite_font, "Sandbox", 36.0, Color::WHITE, v2(800.0, 340.0), Vec2::ZERO);
+
+        ctx.pop_matrix();
+
+        ctx.set_draw_target(ctx.window_target());
+        ctx.clear(Color::GREEN);
+        ctx.draw_textured_rect(
+            v2(0.0, 0.0),
+            0.0,
+            v2(self.draw_target.width() as f32, self.draw_target.height() as f32),
+            Vec2::ZERO,
+            &self.draw_target_bg,
+        );
     }
 
     fn on_stop(&mut self, _ctx: &mut Context) {}

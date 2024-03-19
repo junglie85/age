@@ -24,12 +24,11 @@ pub struct Graphics {
     camera_bgl: BindGroupLayout,
     texture_bgl: BindGroupLayout,
     default_sampler: Sampler,
-    #[allow(dead_code)]
     default_texture: Texture,
     #[allow(dead_code)]
     default_texture_view: TextureView,
     default_texture_bg: BindGroup,
-    pipeline: RenderPipeline,
+    default_pipeline: RenderPipeline,
     camera: Camera,
     meshes: Meshes,
 }
@@ -101,7 +100,7 @@ impl Graphics {
             ],
         });
 
-        let pipeline = device.create_render_pipeline(&RenderPipelineInfo {
+        let default_pipeline = device.create_render_pipeline(&RenderPipelineInfo {
             label: Some("graphics"),
             layout: &pl,
             shader: &shader,
@@ -124,14 +123,22 @@ impl Graphics {
             default_texture,
             default_texture_view,
             default_texture_bg,
-            pipeline,
+            default_pipeline,
             camera,
             meshes,
         }
     }
 
+    pub fn default_pipeline(&self) -> &RenderPipeline {
+        &self.default_pipeline
+    }
+
     pub fn default_sampler(&self) -> &Sampler {
         &self.default_sampler
+    }
+
+    pub fn default_texture(&self) -> &Texture {
+        &self.default_texture
     }
 
     pub fn texture_bind_group_layout(&self) -> &BindGroupLayout {
@@ -142,7 +149,7 @@ impl Graphics {
         self.draw_state = DrawState::default();
         self.set_draw_target(target);
         self.set_camera(&self.camera.clone());
-        self.set_render_pipeline(&self.pipeline.clone());
+        self.set_render_pipeline(&self.default_pipeline.clone());
     }
 
     pub fn push_matrix(&mut self, matrix: Mat4) {

@@ -15,11 +15,11 @@ use crate::{
     TextureInfo,
 };
 
-pub(crate) struct AppConfig {
-    pub(crate) width: u32,
-    pub(crate) height: u32,
-    pub(crate) title: String,
-    pub(crate) clear_color: Color,
+pub struct AppConfig {
+    pub width: u32,
+    pub height: u32,
+    pub title: String,
+    pub(crate) clear_color: Color, // todo: do we need this?
 }
 
 impl Default for AppConfig {
@@ -196,7 +196,6 @@ enum AppEvent {
 }
 
 pub struct Context {
-    #[allow(dead_code)]
     config: AppConfig,
     el_proxy: EventLoopProxy<AppEvent>,
     device: RenderDevice,
@@ -206,12 +205,20 @@ pub struct Context {
 }
 
 impl Context {
+    pub fn config(&self) -> &AppConfig {
+        &self.config
+    }
+
     pub fn graphics(&self) -> &Graphics {
         &self.graphics
     }
 
     pub fn render_device(&self) -> &RenderDevice {
         &self.device
+    }
+
+    pub fn window_target(&self) -> DrawTarget {
+        Into::<DrawTarget>::into(&self.window_target)
     }
 
     pub fn exit(&mut self) {

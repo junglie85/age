@@ -219,11 +219,11 @@ impl Game for Sandbox {
         let h = window_height as f32 / self.draw_target.height() as f32;
         let scale = w.min(h);
 
-        let screen_center = v2(window_width as f32, window_height as f32) / 2.0;
-        let buffer_center = v2(self.draw_target.width() as f32, self.draw_target.height() as f32) / 2.0;
-        let origin = buffer_center * scale;
+        let window_center = v2(window_width as f32, window_height as f32) / 2.0;
+        let target_center = v2(self.draw_target.width() as f32, self.draw_target.height() as f32) / 2.0;
+        let origin = target_center * scale;
 
-        let matrix = Mat4::from_translation((screen_center - origin).extend(0.0))
+        let matrix = Mat4::from_translation((window_center - origin).extend(0.0))
             * Mat4::from_scale(Vec2::splat(scale).extend(1.0));
 
         ctx.set_draw_target(ctx.window_target());

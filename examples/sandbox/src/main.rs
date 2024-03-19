@@ -1,6 +1,6 @@
 use age::{
-    AgeResult, App, BindGroup, BindGroupInfo, Binding, CharSet, Color, Context, Font, Game, Image, Rect, Sprite,
-    SpriteFont, Texture, TextureFormat, TextureInfo, TextureView, TextureViewInfo,
+    AgeResult, App, BindGroup, BindGroupInfo, Binding, Camera, CharSet, Color, Context, Font, Game, Image, Rect,
+    Sprite, SpriteFont, Texture, TextureFormat, TextureInfo, TextureView, TextureViewInfo,
 };
 use age_math::{v2, Mat4, Vec2};
 
@@ -20,6 +20,7 @@ struct Sandbox {
     #[allow(dead_code)]
     draw_target_view: TextureView,
     draw_target_bg: BindGroup,
+    camera: Camera,
 }
 
 impl Sandbox {
@@ -113,6 +114,8 @@ impl Sandbox {
             ],
         });
 
+        let camera = ctx.create_camera(0.0, ctx.config().width as f32, ctx.config().height as f32, 0.0);
+
         Ok(Self {
             grid,
             grid_view,
@@ -125,6 +128,7 @@ impl Sandbox {
             draw_target,
             draw_target_view,
             draw_target_bg,
+            camera,
         })
     }
 }
@@ -134,6 +138,7 @@ impl Game for Sandbox {
 
     fn on_tick(&mut self, ctx: &mut Context) {
         ctx.set_draw_target(&self.draw_target);
+        ctx.set_camera(&self.camera);
         ctx.clear(Color::BLUE);
 
         ctx.push_matrix(Mat4::from_translation(v2(500.0, 100.0).extend(0.0)));
@@ -222,6 +227,7 @@ impl Game for Sandbox {
             * Mat4::from_scale(Vec2::splat(scale).extend(1.0));
 
         ctx.set_draw_target(ctx.window_target());
+        ctx.set_camera(&ctx.graphics().default_camera().clone());
         ctx.clear(Color::GREEN);
         ctx.push_matrix(matrix);
         ctx.draw_textured_rect(

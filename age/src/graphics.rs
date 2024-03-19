@@ -187,14 +187,31 @@ impl Graphics {
 
     pub fn set_draw_target(&mut self, target: impl Into<DrawTarget>) {
         self.draw_state.target = Some(target.into());
+        self.draw_state.clear_color = None;
     }
 
     pub fn set_render_pipeline(&mut self, pipeline: &RenderPipeline) {
         self.draw_state.pipeline = Some(pipeline.clone());
     }
 
-    pub fn clear(&mut self, color: Color) {
+    pub fn clear(&mut self, color: Color, device: &mut RenderDevice) {
         self.draw_state.clear_color = Some(color);
+
+        draw(
+            &mut self.draw_state,
+            Vec2::ZERO,
+            0.0,
+            Vec2::ZERO,
+            Vec2::ZERO,
+            Color::WHITE,
+            &self.default_texture_bg,
+            Rect::new(Vec2::ZERO, Vec2::ZERO),
+            &self.meshes.rect.vbo,
+            [Self::VERTEX_TYPE_FILL, 0.0, 0.0, 0.0],
+            &self.meshes.rect.ibo,
+            0,
+            device,
+        );
     }
 
     pub fn draw_line(
@@ -703,12 +720,30 @@ impl Graphics {
         top: f32,
         device: &RenderDevice,
     ) -> Camera {
-        Camera::new(left, right, bottom, top, &self.camera_bgl, device)
+        let camera = Camera::new(left, right, bottom, top, &self.camera_bgl, device);
+        camera.update(device);
+        camera
     }
 
     pub fn default_camera(&self) -> &Camera {
-        // todo: need to be able to control whether it updates with the view or stays fixed.
         &self.camera
+    }
+
+    pub fn reconfigure(
+        &mut self,
+        width: u32,
+        height: u32,
+        scale_factor: f32,
+        device: &RenderDevice,
+    ) {
+        self.camera.resize(
+            0.0,
+            width as f32 * scale_factor,
+            height as f32 * scale_factor,
+            0.0,
+        );
+        // self.camera.set_zoom();
+        self.camera.update(device)
     }
 }
 
@@ -849,6 +884,14 @@ impl Camera {
         &self.ubo
     }
 
+    pub fn resize(&mut self, left: f32, right: f32, bottom: f32, top: f32) {
+        self.left = left;
+        self.right = right;
+        self.bottom = bottom;
+        self.top = top;
+        self.dirty.store(true, Ordering::Relaxed);
+    }
+
     pub fn update(&self, device: &RenderDevice) {
         if self.dirty.swap(false, Ordering::Relaxed) {
             device.write_buffer(&self.ubo, &self.view_projection_matrix().to_cols_array());
@@ -873,6 +916,10 @@ impl Camera {
         .inverse();
 
         proj * view
+    }
+
+    pub fn size(&self) -> Vec2 {
+        v2(self.right - self.left, self.bottom - self.top)
     }
 }
 

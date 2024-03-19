@@ -890,6 +890,8 @@ impl WindowTarget {
 
             self.draw_target = draw_target;
             self.bg = bg;
+
+            println!("window target resized: {width},{height}");
         }
     }
 
@@ -1295,6 +1297,8 @@ impl WindowSurface {
         // todo: pick best format and add/remove srgb from views as required.
         config.format = TextureFormat::Bgra8UnormSrgb.into();
         config.present_mode = present_mode;
+        config.width = width;
+        config.height = height;
 
         surface.configure(&device.device, &config);
 
@@ -1303,6 +1307,8 @@ impl WindowSurface {
         self.height = config.height;
         self.vsync = vsync;
         self.config = Some(config);
+
+        println!("surface resized: {},{}", self.width, self.height);
 
         Ok(())
     }

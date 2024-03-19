@@ -72,24 +72,19 @@ impl AppBuilder {
         let ctx = Context {
             config: self.config,
             el_proxy,
+            window: Arc::new(window),
             device,
             graphics,
             window_target,
             running: false,
         };
 
-        Ok(App {
-            el,
-            window,
-            surface,
-            ctx,
-        })
+        Ok(App { el, surface, ctx })
     }
 }
 
 pub struct App {
     el: EventLoop<AppEvent>,
-    window: Window,
     surface: WindowSurface,
     ctx: Context,
 }
@@ -106,21 +101,18 @@ impl App {
     pub fn run(self, mut game: impl Game) -> AgeResult {
         let App {
             el,
-            window,
             mut surface,
             mut ctx,
         } = self;
 
-        let window = Arc::new(window);
+        game.on_start(&mut ctx);
 
         ctx.running = true;
-
-        game.on_start(&mut ctx);
-        window.set_visible(true);
+        ctx.window.set_visible(true);
 
         os::run(el, |event, elwt| {
             match event {
-                Event::WindowEvent { window_id, event } if window.id() == window_id => {
+                Event::WindowEvent { window_id, event } if ctx.window.id() == window_id => {
                     match event {
                         WindowEvent::CloseRequested => game.on_exit(&mut ctx),
 
@@ -133,15 +125,21 @@ impl App {
                             ctx.window_target.draw(&mut surface, &mut ctx.device)?;
                             ctx.device.end_frame();
 
-                            window.pre_present_notify();
+                            ctx.window.pre_present_notify();
                             surface.present();
-                            window.request_redraw();
+                            ctx.window.request_redraw();
                         }
 
                         WindowEvent::Resized(size) => {
                             let (width, height) = size.into();
                             surface.reconfigure(&ctx.device, width, height, surface.vsync())?;
                             ctx.window_target.reconfigure(&surface, &ctx.device);
+                            ctx.graphics.reconfigure(
+                                width,
+                                height,
+                                ctx.scale_factor(),
+                                &ctx.device,
+                            );
                         }
 
                         WindowEvent::ScaleFactorChanged { .. } => {
@@ -153,7 +151,7 @@ impl App {
                 }
 
                 Event::Resumed => {
-                    surface.resume(&ctx.device, window.clone())?;
+                    surface.resume(&ctx.device, ctx.window.clone())?;
                     ctx.window_target.reconfigure(&surface, &ctx.device);
                 }
 
@@ -178,6 +176,8 @@ impl App {
             Ok(())
         })?;
 
+        ctx.running = false;
+
         game.on_stop(&mut ctx);
 
         Ok(())
@@ -191,6 +191,7 @@ enum AppEvent {
 pub struct Context {
     config: AppConfig,
     el_proxy: EventLoopProxy<AppEvent>,
+    window: Arc<Window>,
     device: RenderDevice,
     graphics: Graphics,
     window_target: WindowTarget,
@@ -212,6 +213,14 @@ impl Context {
 
     pub fn window_target(&self) -> DrawTarget {
         Into::<DrawTarget>::into(&self.window_target)
+    }
+
+    pub fn scale_factor(&self) -> f32 {
+        self.window.scale_factor() as f32
+    }
+
+    pub fn window_size(&self) -> (u32, u32) {
+        self.window.inner_size().into()
     }
 
     pub fn exit(&mut self) {
@@ -278,7 +287,7 @@ impl Context {
     }
 
     pub fn clear(&mut self, color: Color) {
-        self.graphics.clear(color);
+        self.graphics.clear(color, &mut self.device);
     }
 
     pub fn draw_line(&mut self, from: Vec2, to: Vec2, thickness: f32, color: Color) {

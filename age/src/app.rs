@@ -19,7 +19,6 @@ pub struct AppConfig {
     pub width: u32,
     pub height: u32,
     pub title: String,
-    pub(crate) clear_color: Color, // todo: do we need this?
 }
 
 impl Default for AppConfig {
@@ -28,7 +27,6 @@ impl Default for AppConfig {
             width: 640,
             height: 480,
             title: "AGE".to_string(),
-            clear_color: Color::BLUE,
         }
     }
 }
@@ -47,11 +45,6 @@ impl AppBuilder {
         };
 
         Self { config }
-    }
-
-    pub fn with_clear_color(mut self, color: Color) -> Self {
-        self.config.clear_color = color;
-        self
     }
 
     pub fn with_title(mut self, title: impl Into<String>) -> Self {

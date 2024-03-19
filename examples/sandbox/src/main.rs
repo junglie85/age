@@ -167,7 +167,7 @@ impl Game for Sandbox {
         );
 
         ctx.draw_line(v2(500.0, 250.0), v2(700.0, 700.0), 5.0, Color::RED);
-        ctx.draw_line_from(v2(700.0, 700.0), 90.0, 150.0, 5.0, Color::GREEN);
+        ctx.draw_line_from(v2(700.0, 700.0), 0.0, 150.0, 5.0, Color::GREEN);
 
         ctx.draw_filled_circle(v2(0.0, 400.0), 100.0, 30, 0.0, Vec2::ZERO, Color::YELLOW);
         ctx.draw_circle(v2(0.0, 400.0), 100.0, 30, 0.0, Vec2::ZERO, 10.0, Color::WHITE);

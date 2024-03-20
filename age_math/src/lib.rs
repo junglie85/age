@@ -1,3 +1,5 @@
+mod vec2;
+
 pub use glam::*;
 
 // todo: remove this once we have impl Into<Vec2>.

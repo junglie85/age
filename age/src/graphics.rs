@@ -736,13 +736,9 @@ impl Graphics {
         scale_factor: f32,
         device: &RenderDevice,
     ) {
-        self.camera.resize(
-            0.0,
-            width as f32 * scale_factor,
-            height as f32 * scale_factor,
-            0.0,
-        );
-        // self.camera.set_zoom();
+        self.camera.resize(0.0, width as f32, height as f32, 0.0);
+        let zoom = 1.0 / scale_factor;
+        self.camera.set_zoom(zoom);
         self.camera.update(device)
     }
 }
@@ -920,6 +916,14 @@ impl Camera {
 
     pub fn size(&self) -> Vec2 {
         v2(self.right - self.left, self.bottom - self.top)
+    }
+
+    pub fn zoom(&self) -> f32 {
+        self.zoom
+    }
+
+    pub fn set_zoom(&mut self, zoom: f32) {
+        self.zoom = zoom;
     }
 }
 

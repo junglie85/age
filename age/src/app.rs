@@ -134,16 +134,27 @@ impl App {
                             let (width, height) = size.into();
                             surface.reconfigure(&ctx.device, width, height, surface.vsync())?;
                             ctx.window_target.reconfigure(&surface, &ctx.device);
+                            let logical_size = size.to_logical(ctx.window.scale_factor());
                             ctx.graphics.reconfigure(
-                                width,
-                                height,
+                                logical_size.width,
+                                logical_size.height,
                                 ctx.scale_factor(),
                                 &ctx.device,
                             );
                         }
 
                         WindowEvent::ScaleFactorChanged { .. } => {
-                            todo!("handle scale factor change")
+                            let size = ctx.window.inner_size();
+                            let (width, height) = size.into();
+                            surface.reconfigure(&ctx.device, width, height, surface.vsync())?;
+                            ctx.window_target.reconfigure(&surface, &ctx.device);
+                            let logical_size = size.to_logical(ctx.window.scale_factor());
+                            ctx.graphics.reconfigure(
+                                logical_size.width,
+                                logical_size.height,
+                                ctx.scale_factor(),
+                                &ctx.device,
+                            );
                         }
 
                         _ => {}

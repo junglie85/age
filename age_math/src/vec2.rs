@@ -3,6 +3,28 @@ use std::{
     ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign},
 };
 
+pub trait Cast<T> {
+    fn cast(self) -> T;
+}
+
+impl Cast<f32> for f32 {
+    fn cast(self) -> f32 {
+        self
+    }
+}
+
+impl Cast<f32> for i32 {
+    fn cast(self) -> f32 {
+        self as f32
+    }
+}
+
+impl Cast<f32> for u32 {
+    fn cast(self) -> f32 {
+        self as f32
+    }
+}
+
 pub trait Arithmetic:
     Debug
     + Display
@@ -18,6 +40,7 @@ pub trait Arithmetic:
     + MulAssign
     + Sub<Output = Self>
     + SubAssign
+    + Cast<f32>
 {
 }
 
@@ -36,6 +59,7 @@ impl<T> Arithmetic for T where
         + MulAssign
         + Sub<Output = Self>
         + SubAssign
+        + Cast<f32>
 {
 }
 
@@ -46,12 +70,32 @@ pub struct Vec2<T: Arithmetic> {
 }
 
 impl<T: Arithmetic> Vec2<T> {
-    pub fn new(x: T, y: T) -> Self {
+    #[inline]
+    pub const fn new(x: T, y: T) -> Self {
         Self { x, y }
     }
 
-    pub fn to_array(&self) -> [T; 2] {
+    #[inline]
+    pub const fn to_array(&self) -> [T; 2] {
         [self.x, self.y]
+    }
+
+    /// Calculate the area of the vector, as if it were a rectangle.
+    #[inline]
+    pub fn area(&self) -> T {
+        self.x * self.y
+    }
+
+    /// Calculate the length of the vector.
+    #[inline]
+    pub fn length(&self) -> f32 {
+        self.length_sq().sqrt()
+    }
+
+    /// Calculate the length squared of the vector.
+    #[inline]
+    pub fn length_sq(&self) -> f32 {
+        (self.x * self.x + self.y * self.y).cast()
     }
 }
 
@@ -316,5 +360,26 @@ mod test {
     fn vec2_negation() {
         assert_eq!(v2f(-2.0, -3.0), -v2f(2.0, 3.0));
         assert_eq!(v2i(-2, -3), -v2i(2, 3));
+    }
+
+    #[test]
+    fn vec2_calculate_area() {
+        assert_eq!(20.0, v2f(4.0, 5.0).area());
+        assert_eq!(20, v2i(4, 5).area());
+        assert_eq!(20, v2u(4, 5).area());
+    }
+
+    #[test]
+    fn vec2_calculate_length() {
+        assert_eq!(5.0, v2f(3.0, 4.0).length());
+        assert_eq!(5.0, v2i(3, 4).length());
+        assert_eq!(5.0, v2u(3, 4).length());
+    }
+
+    #[test]
+    fn vec2_calculate_length_squared() {
+        assert_eq!(25.0, v2f(3.0, 4.0).length_sq());
+        assert_eq!(25.0, v2i(3, 4).length_sq());
+        assert_eq!(25.0, v2u(3, 4).length_sq());
     }
 }

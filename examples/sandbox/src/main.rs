@@ -141,7 +141,7 @@ impl Game for Sandbox {
         ctx.set_camera(&self.camera);
         ctx.clear(Color::BLUE);
 
-        ctx.push_matrix(Mat4::from_translation(v2(500.0, 100.0).extend(0.0)));
+        ctx.push_matrix(Mat4::translation(v2(500.0, 100.0)));
         ctx.draw_filled_rect(v2(200.0, 100.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), Color::YELLOW);
         ctx.draw_rect(v2(200.0, 100.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), 10.0, Color::BLACK);
         ctx.draw_filled_rect(v2(300.0, 150.0), 0.0, v2(400.0, 200.0), v2(200.0, 100.0), Color::RED);
@@ -223,8 +223,7 @@ impl Game for Sandbox {
         let target_center = v2(self.draw_target.width() as f32, self.draw_target.height() as f32) / 2.0;
         let origin = target_center * scale;
 
-        let matrix = Mat4::from_translation((window_center - origin).extend(0.0))
-            * Mat4::from_scale(Vec2::splat(scale).extend(1.0));
+        let matrix = Mat4::translation(window_center - origin) * Mat4::scale(Vec2::splat(scale));
 
         ctx.set_draw_target(ctx.window_target());
         ctx.set_camera(&ctx.graphics().default_camera().clone());

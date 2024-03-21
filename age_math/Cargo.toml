@@ -3,5 +3,5 @@ name = "age_math"
 version.workspace = true
 edition.workspace = true
 
-[dependencies]
-glam = "0.25.0"
+[dev-dependencies]
+glam = "0.25.0" # For making it easy to test correct implementation without manually calculating the expected matrix.

@@ -777,11 +777,11 @@ fn draw(
 
     let translation = (position - origin).floor();
     let model = draw_state.matrix
-        * Mat4::from_translation(translation.extend(0.0))
-        * Mat4::from_translation(origin.extend(0.0))
-        * Mat4::from_rotation_z(rotation)
-        * Mat4::from_translation(-origin.extend(0.0))
-        * Mat4::from_scale(scale.extend(1.0));
+        * Mat4::translation(translation)
+        * Mat4::translation(origin)
+        * Mat4::rotation(rotation)
+        * Mat4::translation(-origin)
+        * Mat4::scale(scale);
     let push_constant = PushConstant {
         model: model.to_cols_array(),
         color: color.to_array_f32(),
@@ -899,16 +899,16 @@ impl Camera {
         let right = self.right / self.zoom;
         let bottom = self.bottom / self.zoom;
         let top = self.top / self.zoom;
-        let proj = Mat4::orthographic_rh(left, right, bottom, top, 100.0, 0.0);
+        let proj = Mat4::orthographic(left, right, bottom, top, 100.0, 0.0);
 
         let width = self.right - self.left;
         let height = self.bottom - self.top;
         let origin = self.pos + v2(width, height) / 2.0;
-        let view = (Mat4::from_translation(self.pos.extend(0.0))
-            * Mat4::from_translation(origin.extend(0.0))
-            * Mat4::from_rotation_z(self.rotation)
-            * Mat4::from_translation(-origin.extend(0.0))
-            * Mat4::from_scale(Vec2::ONE.extend(1.0)))
+        let view = (Mat4::translation(self.pos)
+            * Mat4::translation(origin)
+            * Mat4::rotation(self.rotation)
+            * Mat4::translation(-origin)
+            * Mat4::scale(Vec2::ONE))
         .inverse();
 
         proj * view

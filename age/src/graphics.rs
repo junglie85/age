@@ -16,7 +16,8 @@ use crate::{
         PipelineLayoutInfo, RenderDevice, RenderPipeline, RenderPipelineInfo, Sampler, ShaderInfo,
         Texture, TextureFormat, VertexBufferLayout, VertexFormat, VertexType,
     },
-    AddressMode, FilterMode, SamplerInfo, SpriteFont, TextureInfo, TextureView, TextureViewInfo,
+    AddressMode, AgeResult, FilterMode, Font, SamplerInfo, SpriteFont, TextureInfo, TextureView,
+    TextureViewInfo,
 };
 
 pub struct Graphics {
@@ -29,6 +30,7 @@ pub struct Graphics {
     default_texture_view: TextureView,
     default_texture_bg: BindGroup,
     default_pipeline: RenderPipeline,
+    default_font: Font,
     camera: Camera,
     meshes: Meshes,
 }
@@ -38,7 +40,13 @@ impl Graphics {
     pub const VERTEX_TYPE_OUTLINE: f32 = 2.0;
     pub const VERTEX_TYPE_TEXT: f32 = 3.0;
 
-    pub(crate) fn new(left: f32, right: f32, bottom: f32, top: f32, device: &RenderDevice) -> Self {
+    pub(crate) fn new(
+        left: f32,
+        right: f32,
+        bottom: f32,
+        top: f32,
+        device: &RenderDevice,
+    ) -> AgeResult<Self> {
         let shader = device.create_shader(&ShaderInfo {
             label: Some("graphics"),
             src: include_str!("shaders/graphics.wgsl"),
@@ -110,12 +118,15 @@ impl Graphics {
             buffers: &[Vertex::layout()],
         });
 
+        let font_data = include_bytes!("../resources/fonts/RobotoMono-Regular.ttf");
+        let default_font = Font::from_bytes(font_data)?;
+
         let camera = Camera::new(left, right, bottom, top, &camera_bgl, device);
         camera.update(device);
 
         let meshes = Meshes::new(device);
 
-        Self {
+        Ok(Self {
             draw_state: DrawState::default(),
             camera_bgl,
             texture_bgl,
@@ -124,9 +135,14 @@ impl Graphics {
             default_texture_view,
             default_texture_bg,
             default_pipeline,
+            default_font,
             camera,
             meshes,
-        }
+        })
+    }
+
+    pub fn default_font(&self) -> &Font {
+        &self.default_font
     }
 
     pub fn default_pipeline(&self) -> &RenderPipeline {

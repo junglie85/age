@@ -235,6 +235,30 @@ pub fn normal(u: Vec2, v: Vec2) -> Vec2 {
     normal
 }
 
+impl From<(f32, f32)> for Vec2 {
+    fn from(value: (f32, f32)) -> Self {
+        v2(value.0, value.1)
+    }
+}
+
+impl From<Vec2> for (f32, f32) {
+    fn from(v: Vec2) -> Self {
+        (v.x, v.y)
+    }
+}
+
+impl From<[f32; 2]> for Vec2 {
+    fn from(value: [f32; 2]) -> Self {
+        v2(value[0], value[1])
+    }
+}
+
+impl From<Vec2> for [f32; 2] {
+    fn from(v: Vec2) -> Self {
+        [v.x, v.y]
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -383,5 +407,14 @@ mod test {
         assert_eq!(v2(0.0, 1.0), normal(v2(0.0, 0.0), v2(10.0, 0.0))); // up
         assert_eq!(v2(1.0, 0.0), normal(v2(0.0, 10.0), v2(0.0, 0.0))); // right
         assert_eq!(v2(0.0, -1.0), normal(v2(10.0, 0.0), v2(0.0, 0.0))); // down
+    }
+
+    #[test]
+    fn vec2_from() {
+        assert_eq!(v2(3.0, 4.0), (3.0, 4.0).into());
+        assert_eq!(v2(3.0, 4.0), [3.0, 4.0].into());
+
+        assert_eq!((3.0, 4.0), v2(3.0, 4.0).into());
+        assert_eq!([3.0, 4.0], Into::<[f32; 2]>::into(v2(3.0, 4.0)));
     }
 }

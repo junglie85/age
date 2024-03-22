@@ -45,11 +45,11 @@ where
     result
 }
 
-#[derive(Debug, Default, Clone)]
-struct ButtonState {
-    pressed: bool,
-    held: bool,
-    released: bool,
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ButtonState {
+    pub pressed: bool,
+    pub held: bool,
+    pub released: bool,
 }
 
 #[derive(Debug)]
@@ -90,31 +90,13 @@ impl Mouse {
         (self.scroll_delta.x, self.scroll_delta.y)
     }
 
-    pub fn button_pressed(&self, button: MouseButton) -> bool {
+    pub fn button(&self, button: MouseButton) -> ButtonState {
         let index = button.as_usize();
         if index < self.button_state.len() {
-            return self.button_state[index].pressed;
+            self.button_state[index]
+        } else {
+            ButtonState::default()
         }
-
-        false
-    }
-
-    pub fn button_released(&self, button: MouseButton) -> bool {
-        let index = button.as_usize();
-        if index < self.button_state.len() {
-            return self.button_state[index].released;
-        }
-
-        false
-    }
-
-    pub fn button_held(&self, button: MouseButton) -> bool {
-        let index = button.as_usize();
-        if index < self.button_state.len() {
-            return self.button_state[index].held;
-        }
-
-        false
     }
 
     pub(crate) fn on_event(&mut self, event: &winit::event::WindowEvent) {
@@ -173,7 +155,7 @@ impl Mouse {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MouseButton {
     Left,
     Right,
@@ -234,25 +216,25 @@ mod test {
         assert_eq!((0.0, 0.0), m.position());
         assert_eq!((0.0, 0.0), m.position_delta());
 
-        assert!(!m.button_pressed(MouseButton::Left));
-        assert!(!m.button_released(MouseButton::Left));
-        assert!(!m.button_held(MouseButton::Left));
+        assert!(!m.button(MouseButton::Left).pressed);
+        assert!(!m.button(MouseButton::Left).released);
+        assert!(!m.button(MouseButton::Left).held);
 
-        assert!(!m.button_pressed(MouseButton::Right));
-        assert!(!m.button_released(MouseButton::Right));
-        assert!(!m.button_held(MouseButton::Right));
+        assert!(!m.button(MouseButton::Right).pressed);
+        assert!(!m.button(MouseButton::Right).released);
+        assert!(!m.button(MouseButton::Right).held);
 
-        assert!(!m.button_pressed(MouseButton::Middle));
-        assert!(!m.button_released(MouseButton::Middle));
-        assert!(!m.button_held(MouseButton::Middle));
+        assert!(!m.button(MouseButton::Middle).pressed);
+        assert!(!m.button(MouseButton::Middle).released);
+        assert!(!m.button(MouseButton::Middle).held);
 
-        assert!(!m.button_pressed(MouseButton::Back));
-        assert!(!m.button_released(MouseButton::Back));
-        assert!(!m.button_held(MouseButton::Back));
+        assert!(!m.button(MouseButton::Back).pressed);
+        assert!(!m.button(MouseButton::Back).released);
+        assert!(!m.button(MouseButton::Back).held);
 
-        assert!(!m.button_pressed(MouseButton::Forward));
-        assert!(!m.button_released(MouseButton::Forward));
-        assert!(!m.button_held(MouseButton::Forward));
+        assert!(!m.button(MouseButton::Forward).pressed);
+        assert!(!m.button(MouseButton::Forward).released);
+        assert!(!m.button(MouseButton::Forward).held);
     }
 
     #[test]
@@ -282,9 +264,9 @@ mod test {
         ));
         m.flush();
 
-        assert!(m.button_pressed(MouseButton::Left));
-        assert!(!m.button_held(MouseButton::Left));
-        assert!(!m.button_released(MouseButton::Left));
+        assert!(m.button(MouseButton::Left).pressed);
+        assert!(!m.button(MouseButton::Left).held);
+        assert!(!m.button(MouseButton::Left).released);
 
         m.on_event(&mouse_input(
             winit::event::ElementState::Pressed,
@@ -292,9 +274,9 @@ mod test {
         ));
         m.flush();
 
-        assert!(!m.button_pressed(MouseButton::Left));
-        assert!(m.button_held(MouseButton::Left));
-        assert!(!m.button_released(MouseButton::Left));
+        assert!(!m.button(MouseButton::Left).pressed);
+        assert!(m.button(MouseButton::Left).held);
+        assert!(!m.button(MouseButton::Left).released);
 
         m.on_event(&mouse_input(
             winit::event::ElementState::Released,
@@ -302,15 +284,15 @@ mod test {
         ));
         m.flush();
 
-        assert!(!m.button_pressed(MouseButton::Left));
-        assert!(!m.button_held(MouseButton::Left));
-        assert!(m.button_released(MouseButton::Left));
+        assert!(!m.button(MouseButton::Left).pressed);
+        assert!(!m.button(MouseButton::Left).held);
+        assert!(m.button(MouseButton::Left).released);
 
         m.flush();
 
-        assert!(!m.button_pressed(MouseButton::Left));
-        assert!(!m.button_held(MouseButton::Left));
-        assert!(!m.button_released(MouseButton::Left));
+        assert!(!m.button(MouseButton::Left).pressed);
+        assert!(!m.button(MouseButton::Left).held);
+        assert!(!m.button(MouseButton::Left).released);
     }
 
     #[test]

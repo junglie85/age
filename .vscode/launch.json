@@ -15,6 +15,21 @@
             "cwd": "${workspaceFolder}/examples/sandbox",
             "console": "integratedTerminal",
             "preLaunchTask": "build sandbox"
+        },
+        {
+            "name": "input",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/input.exe",
+            "environment": [
+                {
+                    "name": "RUST_BACKTRACE",
+                    "value": "1"
+                }
+            ],
+            "cwd": "${workspaceFolder}/examples/input",
+            "console": "integratedTerminal",
+            "preLaunchTask": "build input"
         }
     ]
 }

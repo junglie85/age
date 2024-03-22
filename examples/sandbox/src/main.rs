@@ -81,7 +81,7 @@ impl Sandbox {
         sprite.set_origin(sprite.size() / 2.0);
 
         let font_data = include_bytes!("OpenSans-Regular.ttf");
-        let mut font = Font::from_bytes(font_data)?;
+        let font = Font::from_bytes(font_data)?;
         let sprite_font = font.load_charset(
             36.0,
             CharSet::ASCII,

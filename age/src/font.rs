@@ -39,7 +39,7 @@ impl Font {
     }
 
     pub fn load_charset(
-        &mut self,
+        &self,
         size: f32,
         charset: CharSet,
         layout: &BindGroupLayout,

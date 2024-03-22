@@ -2,14 +2,14 @@ use std::sync::Arc;
 
 use age_math::{Mat4, Vec2};
 use winit::{
-    event::{Event, WindowEvent},
+    event::{ElementState, Event, MouseScrollDelta, WindowEvent},
     event_loop::{EventLoop, EventLoopProxy},
     window::Window,
 };
 
 use crate::{
     graphics::Graphics,
-    os::{self, Mouse},
+    os::{self, Mouse, MouseButton},
     renderer::{Color, DrawTarget, RenderDevice, RenderPipeline, WindowSurface, WindowTarget},
     AgeResult, BindGroup, Camera, Game, Image, Rect, Sprite, SpriteFont, TextureFormat,
     TextureInfo,
@@ -68,7 +68,7 @@ impl AppBuilder {
             self.config.height as f32,
             0.0,
             &device,
-        );
+        )?;
 
         let ctx = Context {
             config: self.config,
@@ -120,11 +120,43 @@ impl App {
                     match event {
                         WindowEvent::CloseRequested => game.on_exit(&mut ctx),
 
-                        WindowEvent::CursorEntered { .. } => todo!(),
-                        WindowEvent::CursorMoved { .. } => todo!(),
-                        WindowEvent::CursorLeft { .. } => todo!(),
-                        WindowEvent::MouseInput { .. } => todo!(),
-                        WindowEvent::MouseWheel { .. } => todo!(),
+                        WindowEvent::CursorEntered { .. } => {
+                            game.on_mouse_event(MouseEvent::CursorEntered, &mut ctx)
+                        }
+                        WindowEvent::CursorLeft { .. } => {
+                            game.on_mouse_event(MouseEvent::CursorExited, &mut ctx)
+                        }
+                        WindowEvent::CursorMoved { position, .. } => game.on_mouse_event(
+                            MouseEvent::Moved {
+                                x: position.x as f32,
+                                y: position.y as f32,
+                            },
+                            &mut ctx,
+                        ),
+                        WindowEvent::MouseInput {
+                            button,
+                            state: ElementState::Pressed,
+                            ..
+                        } => {
+                            game.on_mouse_event(MouseEvent::ButtonPressed(button.into()), &mut ctx)
+                        }
+                        WindowEvent::MouseInput {
+                            button,
+                            state: ElementState::Released,
+                            ..
+                        } => {
+                            game.on_mouse_event(MouseEvent::ButtonReleased(button.into()), &mut ctx)
+                        }
+                        WindowEvent::MouseWheel {
+                            delta: MouseScrollDelta::LineDelta(x, y),
+                            ..
+                        } => game.on_mouse_event(
+                            MouseEvent::Scrolled {
+                                delta_x: x,
+                                delta_y: y,
+                            },
+                            &mut ctx,
+                        ),
 
                         WindowEvent::RedrawRequested => {
                             ctx.mouse.flush();
@@ -211,6 +243,16 @@ enum AppEvent {
     EnableVsync(bool),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MouseEvent {
+    ButtonPressed(MouseButton),
+    ButtonReleased(MouseButton),
+    CursorEntered,
+    CursorExited,
+    Moved { x: f32, y: f32 },
+    Scrolled { delta_x: f32, delta_y: f32 },
+}
+
 pub struct Context {
     config: AppConfig,
     el_proxy: EventLoopProxy<AppEvent>,
@@ -255,6 +297,10 @@ impl Context {
         self.running = false;
     }
 
+    pub fn set_title(&self, title: &str) {
+        self.window.set_title(title);
+    }
+
     pub fn set_vsync(&self, enabled: bool) {
         if self
             .el_proxy
@@ -263,6 +309,24 @@ impl Context {
         {
             eprintln!("attempted to send message on closed event loop");
         }
+    }
+}
+
+impl Context {
+    pub fn screen_position(&self) -> (f32, f32) {
+        self.mouse.position()
+    }
+
+    pub fn mouse_button_pressed(&self, button: MouseButton) -> bool {
+        self.mouse.button(button).pressed
+    }
+
+    pub fn mouse_button_released(&self, button: MouseButton) -> bool {
+        self.mouse.button(button).released
+    }
+
+    pub fn mouse_button_held(&self, button: MouseButton) -> bool {
+        self.mouse.button(button).held
     }
 }
 

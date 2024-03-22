@@ -16,6 +16,22 @@
                 "isDefault": true
             },
             "label": "build sandbox"
+        },
+        {
+            "type": "cargo",
+            "command": "build",
+            "args": [
+                "--bin",
+                "input"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "label": "build input"
         }
     ]
 }

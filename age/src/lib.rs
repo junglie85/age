@@ -7,11 +7,12 @@ mod os;
 mod packer;
 mod renderer;
 
-pub use app::{App, AppBuilder, Context};
+pub use app::{App, AppBuilder, Context, MouseEvent};
 pub use error::{AgeError, AgeResult};
 pub use font::{CharSet, Font, Glyph, SpriteFont};
 pub use graphics::{Camera, Rect, Sprite, Vertex};
 pub use image::Image;
+pub use os::{ButtonState, Mouse, MouseButton};
 pub use packer::{Entry, PackerInfo, TexturePacker};
 pub use renderer::{
     align_to, AddressMode, BindGroup, BindGroupId, BindGroupInfo, BindGroupLayout,
@@ -33,4 +34,6 @@ pub trait Game {
     fn on_exit(&mut self, ctx: &mut Context) {
         ctx.exit();
     }
+
+    fn on_mouse_event(&mut self, _event: MouseEvent, _ctx: &mut Context) {}
 }

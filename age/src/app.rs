@@ -9,7 +9,7 @@ use winit::{
 
 use crate::{
     graphics::Graphics,
-    os,
+    os::{self, Mouse},
     renderer::{Color, DrawTarget, RenderDevice, RenderPipeline, WindowSurface, WindowTarget},
     AgeResult, BindGroup, Camera, Game, Image, Rect, Sprite, SpriteFont, TextureFormat,
     TextureInfo,
@@ -55,6 +55,7 @@ impl AppBuilder {
     pub fn build(self) -> AgeResult<App> {
         let el = os::create_event_loop::<AppEvent>()?;
         let el_proxy = el.create_proxy();
+        let mouse = os::create_mouse();
         let window = os::create_window(&self.config, &el)?;
         let device = RenderDevice::new()?;
         let surface = WindowSurface::new();
@@ -72,6 +73,7 @@ impl AppBuilder {
         let ctx = Context {
             config: self.config,
             el_proxy,
+            mouse,
             window: Arc::new(window),
             device,
             graphics,
@@ -113,10 +115,20 @@ impl App {
         os::run(el, |event, elwt| {
             match event {
                 Event::WindowEvent { window_id, event } if ctx.window.id() == window_id => {
+                    ctx.mouse.on_event(&event);
+
                     match event {
                         WindowEvent::CloseRequested => game.on_exit(&mut ctx),
 
+                        WindowEvent::CursorEntered { .. } => todo!(),
+                        WindowEvent::CursorMoved { .. } => todo!(),
+                        WindowEvent::CursorLeft { .. } => todo!(),
+                        WindowEvent::MouseInput { .. } => todo!(),
+                        WindowEvent::MouseWheel { .. } => todo!(),
+
                         WindowEvent::RedrawRequested => {
+                            ctx.mouse.flush();
+
                             ctx.device.begin_frame();
                             ctx.graphics.begin_frame(&ctx.window_target);
 
@@ -202,6 +214,7 @@ enum AppEvent {
 pub struct Context {
     config: AppConfig,
     el_proxy: EventLoopProxy<AppEvent>,
+    mouse: Mouse,
     window: Arc<Window>,
     device: RenderDevice,
     graphics: Graphics,
@@ -216,6 +229,10 @@ impl Context {
 
     pub fn graphics(&self) -> &Graphics {
         &self.graphics
+    }
+
+    pub fn mouse(&self) -> &Mouse {
+        &self.mouse
     }
 
     pub fn render_device(&self) -> &RenderDevice {

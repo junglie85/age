@@ -10,7 +10,7 @@ mod renderer;
 pub use app::{App, AppBuilder, Context, MouseEvent};
 pub use error::{AgeError, AgeResult};
 pub use font::{CharSet, Font, Glyph, SpriteFont};
-pub use graphics::{Camera, Rect, Sprite, Vertex};
+pub use graphics::{map_screen_to_world, map_world_to_screen, Camera, Sprite, Vertex};
 pub use image::Image;
 pub use os::{ButtonState, Mouse, MouseButton};
 pub use packer::{Entry, PackerInfo, TexturePacker};
@@ -18,7 +18,7 @@ pub use renderer::{
     align_to, AddressMode, BindGroup, BindGroupId, BindGroupInfo, BindGroupLayout,
     BindGroupLayoutId, BindGroupLayoutInfo, Binding, BindingType, Buffer, BufferId, BufferInfo,
     BufferType, Color, DrawCommand, DrawTarget, FilterMode, IndexFormat, IndexedDraw,
-    PipelineLayout, PipelineLayoutId, PipelineLayoutInfo, RenderDevice, RenderPipeline,
+    PipelineLayout, PipelineLayoutId, PipelineLayoutInfo, Rect, RenderDevice, RenderPipeline,
     RenderPipelineId, RenderPipelineInfo, Sampler, SamplerId, SamplerInfo, Shader, ShaderId,
     ShaderInfo, Texture, TextureFormat, TextureId, TextureInfo, TextureView, TextureViewId,
     TextureViewInfo, VertexBufferLayout, VertexFormat, VertexType,

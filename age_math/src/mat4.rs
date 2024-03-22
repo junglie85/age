@@ -3,7 +3,7 @@ use std::{
     ops::{Mul, MulAssign},
 };
 
-use crate::vec2::Vec2;
+use crate::{v2, vec2::Vec2};
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct Mat4 {
@@ -237,6 +237,17 @@ impl MulAssign for Mat4 {
     }
 }
 
+impl Mul<Vec2> for Mat4 {
+    type Output = Vec2;
+
+    fn mul(self, rhs: Vec2) -> Self::Output {
+        let x = self.m00 * rhs.x + self.m01 * rhs.y + self.m03;
+        let y = self.m10 * rhs.x + self.m11 * rhs.y + self.m13;
+
+        v2(x, y)
+    }
+}
+
 impl Debug for Mat4 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Mat4")
@@ -371,6 +382,25 @@ mod test {
             Mat4::translation_rotation_scale(tx, r, s).to_cols_array(),
             g_m4.to_cols_array()
         );
+    }
+
+    #[test]
+    fn mat4_mul_vec2() {
+        let p = v2(30.0, 90.0);
+        let tx = v2(50.0, 100.0);
+        let r = 90.0_f32.to_radians();
+        let s = v2(2.0, 0.5);
+        let m = Mat4::translation_rotation_scale(tx, r, s);
+        let v = m * p;
+
+        let g_tx = glam::Mat4::from_translation(glam::Vec3::new(tx.x, tx.y, 0.0));
+        let g_r = glam::Mat4::from_rotation_z(r);
+        let g_s = glam::Mat4::from_scale(glam::Vec3::new(s.x, s.y, 1.0));
+        let g_m4 = g_tx * g_r * g_s;
+        let g_v = g_m4 * glam::Vec4::new(p.x, p.y, 0.0, 0.0);
+
+        assert_eq!(m.to_cols_array(), g_m4.to_cols_array());
+        assert_eq!(g_v, glam::Vec4::new(v.x, v.y, 0.0, 0.0));
     }
 
     impl PartialEq<glam::Mat4> for Mat4 {

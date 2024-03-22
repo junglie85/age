@@ -6,6 +6,7 @@ use std::{
     sync::Arc,
 };
 
+use age_math::{v2, Vec2};
 use bytemuck::cast_slice;
 use wgpu::{
     BindGroupDescriptor, BindGroupLayoutDescriptor, BindingResource, BlendState, BufferBindingType,
@@ -132,6 +133,8 @@ impl RenderDevice {
 
         let mut current_rpass = None;
         let mut current_target = None;
+        let mut current_viewport = None;
+        let mut current_scissor = None;
         let mut current_bind_groups = [Self::EMPTY_BIND_GROUP; Self::MAX_BIND_GROUPS];
         let mut current_pipeline = None;
         let mut current_vertex_buffers = [Self::EMPTY_VERTEX_BUFFER; Self::MAX_VERTEX_BUFFERS];
@@ -140,6 +143,9 @@ impl RenderDevice {
         for DrawCommand {
             clear_color,
             target,
+            size,
+            viewport,
+            scissor,
             bind_groups,
             pipeline,
             push_constant_data,
@@ -158,6 +164,8 @@ impl RenderDevice {
                 current_vertex_buffers.iter_mut().for_each(|b| *b = None);
                 current_pipeline = None;
                 current_bind_groups.iter_mut().for_each(|bg| *bg = None);
+                current_viewport = None;
+                current_scissor = None;
 
                 if Some(&target.color_target) != current_target.as_ref() {
                     current_target = Some(target.color_target.clone());
@@ -189,6 +197,28 @@ impl RenderDevice {
             let Some(pass) = current_rpass.as_mut() else {
                 unreachable!("render pass will always be set by this point");
             };
+
+            if Some(viewport) != current_viewport.as_ref() {
+                current_viewport = Some(*viewport);
+                pass.set_viewport(
+                    viewport.position.x * size.x,
+                    viewport.position.y * size.y,
+                    viewport.size.x * size.x,
+                    viewport.size.y * size.y,
+                    0.0,
+                    1.0,
+                );
+            }
+
+            if Some(scissor) != current_scissor.as_ref() {
+                current_scissor = Some(*scissor);
+                pass.set_scissor_rect(
+                    (scissor.position.x * size.x) as u32,
+                    (scissor.position.y * size.y) as u32,
+                    (scissor.size.x * size.x) as u32,
+                    (scissor.size.y * size.y) as u32,
+                );
+            }
 
             if Some(pipeline) != current_pipeline.as_ref() {
                 current_pipeline = Some(pipeline.clone());
@@ -238,6 +268,8 @@ impl RenderDevice {
         current_vertex_buffers.iter_mut().for_each(|b| *b = None);
         current_pipeline = None;
         current_bind_groups.iter_mut().for_each(|bg| *bg = None);
+        current_scissor = None;
+        current_viewport = None;
         current_target = None;
         current_rpass = None;
 
@@ -923,6 +955,9 @@ impl WindowTarget {
         device.push_draw_command(DrawCommand {
             clear_color: Some(Color::RED),
             target: surface.try_into()?,
+            size: v2(surface.width as f32, surface.height as f32),
+            viewport: Rect::new(Vec2::ZERO, Vec2::ONE),
+            scissor: Rect::new(Vec2::ZERO, Vec2::ONE),
             bind_groups,
             pipeline: self.pipeline.clone(),
             push_constant_data: None,
@@ -1336,6 +1371,22 @@ impl WindowSurface {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct Rect {
+    pub position: Vec2,
+    pub size: Vec2,
+}
+
+impl Rect {
+    pub const fn new(position: Vec2, size: Vec2) -> Self {
+        Self { position, size }
+    }
+
+    pub fn to_array_f32(&self) -> [f32; 4] {
+        [self.position.x, self.position.y, self.size.x, self.size.y]
+    }
+}
+
 struct CommandBuffer {
     commands: Vec<DrawCommand>,
 }
@@ -1359,6 +1410,9 @@ impl CommandBuffer {
 pub struct DrawCommand {
     pub clear_color: Option<Color>,
     pub target: DrawTarget,
+    pub size: Vec2,
+    pub viewport: Rect,
+    pub scissor: Rect,
     pub bind_groups: [Option<BindGroup>; RenderDevice::MAX_BIND_GROUPS],
     pub pipeline: RenderPipeline,
     pub push_constant_data: Option<Vec<u8>>,

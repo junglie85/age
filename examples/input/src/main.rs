@@ -1,4 +1,4 @@
-use age::{AgeResult, App, CharSet, Color, Context, Game, SpriteFont};
+use age::{map_screen_to_world, AgeResult, App, CharSet, Color, Context, Game, MouseButton, SpriteFont};
 use age_math::v2;
 
 struct Application {
@@ -29,14 +29,74 @@ impl Game for Application {
 
     fn on_tick(&mut self, ctx: &mut Context) {
         let screen_pos = ctx.screen_position();
+        let world_pos = map_screen_to_world(screen_pos.into(), ctx.graphics().default_camera());
 
         ctx.clear(Color::rgb(1.0, 0.0, 1.0));
 
+        ctx.draw_filled_circle(screen_pos.into(), 5.0, 30, 0.0, v2(5.0, 5.0), Color::rgb(0.0, 1.0, 1.0));
+
+        let advance = v2(0.0, self.font.line_height());
         let font_size = 24.0;
         let color = Color::WHITE;
         let position = v2(5.0, 5.0);
         let text = format!("Screen pos: {:.2}, {:.2}", screen_pos.0, screen_pos.1);
         ctx.draw_string(&self.font, &text, font_size, color, position);
+
+        let position = position + advance;
+        let text = format!("World pos: {:.2}, {:.2}", world_pos.x, world_pos.y);
+        ctx.draw_string(&self.font, &text, font_size, color, position);
+
+        let position = position + advance;
+        let text = "Mouse captured: no (todo)";
+        ctx.draw_string(&self.font, text, font_size, color, position);
+
+        let released_color = Color::WHITE;
+        let pressed_color = Color::rgb(1.0, 1.0, 0.0);
+
+        let position = position + advance;
+        let text = "Mouse button - left";
+        let color = if ctx.mouse_button_pressed(MouseButton::Left) || ctx.mouse_button_held(MouseButton::Left) {
+            pressed_color
+        } else {
+            released_color
+        };
+        ctx.draw_string(&self.font, text, font_size, color, position);
+
+        let position = position + advance;
+        let text = "Mouse button - middle";
+        let color = if ctx.mouse_button_pressed(MouseButton::Middle) || ctx.mouse_button_held(MouseButton::Middle) {
+            pressed_color
+        } else {
+            released_color
+        };
+        ctx.draw_string(&self.font, text, font_size, color, position);
+
+        let position = position + advance;
+        let text = "Mouse button - right";
+        let color = if ctx.mouse_button_pressed(MouseButton::Right) || ctx.mouse_button_held(MouseButton::Right) {
+            pressed_color
+        } else {
+            released_color
+        };
+        ctx.draw_string(&self.font, text, font_size, color, position);
+
+        let position = position + advance;
+        let text = "Mouse button - forward";
+        let color = if ctx.mouse_button_pressed(MouseButton::Forward) || ctx.mouse_button_held(MouseButton::Forward) {
+            pressed_color
+        } else {
+            released_color
+        };
+        ctx.draw_string(&self.font, text, font_size, color, position);
+
+        let position = position + advance;
+        let text = "Mouse button - back";
+        let color = if ctx.mouse_button_pressed(MouseButton::Back) || ctx.mouse_button_held(MouseButton::Back) {
+            pressed_color
+        } else {
+            released_color
+        };
+        ctx.draw_string(&self.font, text, font_size, color, position);
     }
 }
 

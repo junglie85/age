@@ -16,8 +16,8 @@ use crate::{
         PipelineLayoutInfo, RenderDevice, RenderPipeline, RenderPipelineInfo, Sampler, ShaderInfo,
         Texture, TextureFormat, VertexBufferLayout, VertexFormat, VertexType,
     },
-    AddressMode, AgeResult, FilterMode, Font, SamplerInfo, SpriteFont, TextureInfo, TextureView,
-    TextureViewInfo,
+    AddressMode, AgeResult, FilterMode, Font, Rect, SamplerInfo, SpriteFont, TextureInfo,
+    TextureView, TextureViewInfo,
 };
 
 pub struct Graphics {
@@ -190,15 +190,15 @@ impl Graphics {
     }
 
     pub fn set_camera(&mut self, camera: &Camera) {
-        let current_camera = match self.draw_state.cameras.iter().find(|&c| c == camera) {
-            Some(camera) => camera,
+        let current_camera = match self.draw_state.cameras.iter().position(|c| c == camera) {
+            Some(index) => index,
             None => {
                 self.draw_state.cameras.push(camera.clone());
-                camera
+                self.draw_state.cameras.len() - 1
             }
         };
 
-        self.draw_state.current_camera = Some(current_camera.bind_group().clone());
+        self.draw_state.current_camera = Some(current_camera);
     }
 
     pub fn set_draw_target(&mut self, target: impl Into<DrawTarget>) {
@@ -779,7 +779,9 @@ fn draw(
         panic!("draw target is not set");
     };
 
-    let Some(camera) = draw_state.current_camera.as_ref() else {
+    let camera = if let Some(index) = draw_state.current_camera {
+        &draw_state.cameras[index]
+    } else {
         panic!("camera is not set");
     };
 
@@ -788,7 +790,7 @@ fn draw(
     };
 
     let mut bind_groups = [RenderDevice::EMPTY_BIND_GROUP; RenderDevice::MAX_BIND_GROUPS];
-    bind_groups[0] = Some(camera.clone());
+    bind_groups[0] = Some(camera.bind_group().clone());
     bind_groups[1] = Some(texture_bg.clone());
 
     let translation = (position - origin).floor();
@@ -818,6 +820,9 @@ fn draw(
     device.push_draw_command(DrawCommand {
         clear_color: draw_state.clear_color.take(),
         target: target.clone(),
+        size: camera.size(),
+        viewport: camera.viewport(),
+        scissor: camera.scissor(),
         bind_groups,
         pipeline: pipeline.clone(),
         push_constant_data,
@@ -832,7 +837,7 @@ struct DrawState {
     matrix: Mat4,
     matrix_stack: Vec<Mat4>,
     cameras: Vec<Camera>,
-    current_camera: Option<BindGroup>,
+    current_camera: Option<usize>,
     clear_color: Option<Color>,
     target: Option<DrawTarget>,
     pipeline: Option<RenderPipeline>,
@@ -847,17 +852,22 @@ pub struct Camera {
     pos: Vec2,
     zoom: f32,
     rotation: f32,
+    viewport: Rect,
+    scissor: Rect,
     ubo: Buffer,
     bg: BindGroup,
     dirty: Arc<AtomicBool>,
 }
 
 impl Camera {
+    pub const WHOLE_VIEW: Rect = Rect::new(Vec2::ZERO, Vec2::ONE);
+
     pub fn new(
         left: f32,
         right: f32,
         bottom: f32,
         top: f32,
+
         bgl: &BindGroupLayout,
         device: &RenderDevice,
     ) -> Self {
@@ -882,6 +892,8 @@ impl Camera {
             pos: Vec2::ZERO,
             zoom: 1.0,
             rotation: 0.0,
+            viewport: Self::WHOLE_VIEW,
+            scissor: Self::WHOLE_VIEW,
             ubo,
             bg,
             dirty,
@@ -930,6 +942,10 @@ impl Camera {
         proj * view
     }
 
+    pub fn position(&self) -> Vec2 {
+        self.pos
+    }
+
     pub fn size(&self) -> Vec2 {
         v2(self.right - self.left, self.bottom - self.top)
     }
@@ -940,6 +956,24 @@ impl Camera {
 
     pub fn set_zoom(&mut self, zoom: f32) {
         self.zoom = zoom;
+    }
+
+    pub fn viewport(&self) -> Rect {
+        self.viewport
+    }
+
+    /// Set the viewport, expressed as a percentage of the overall camera view size.
+    pub fn set_viewport(&mut self, viewport: Rect) {
+        self.viewport = viewport;
+    }
+
+    pub fn scissor(&self) -> Rect {
+        self.scissor
+    }
+
+    /// Set the scissor rect, expressed as a percentage of the overall camera view size.
+    pub fn set_scissor(&mut self, scissor: Rect) {
+        self.scissor = scissor;
     }
 }
 
@@ -1186,22 +1220,6 @@ fn geometric_center(vertices: &[Vertex]) -> Vec2 {
     sum_center / sum_weight
 }
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct Rect {
-    pub position: Vec2,
-    pub size: Vec2,
-}
-
-impl Rect {
-    pub fn new(position: Vec2, size: Vec2) -> Self {
-        Self { position, size }
-    }
-
-    pub fn to_array_f32(&self) -> [f32; 4] {
-        [self.position.x, self.position.y, self.size.x, self.size.y]
-    }
-}
-
 pub struct Sprite {
     texture: Texture,
     #[allow(dead_code)]
@@ -1255,4 +1273,39 @@ impl Sprite {
         let h = self.texture.height();
         v2(w as f32, h as f32)
     }
+}
+
+pub fn map_screen_to_world(position: Vec2, camera: &Camera) -> Vec2 {
+    // // First, convert from viewport coordinates to homogeneous coordinates
+    // const FloatRect viewport   = FloatRect(getViewport(view));
+    // const Vector2f  normalized = Vector2f(-1, 1) +
+    //                             Vector2f(2, -2).cwiseMul(Vector2f(point) - viewport.getPosition()).cwiseDiv(viewport.getSize());
+    let viewport = camera.viewport();
+    let pos = camera.position();
+    let size = camera.size();
+    let normalized = v2(-1.0, 1.0)
+        + v2(2.0, -2.0) * (position - viewport.position * pos) / (viewport.size * size);
+
+    // let vp = glam::Mat4::from_cols_array(&camera.view_projection_matrix().to_cols_array());
+    // let p = vp.inverse() * glam::Vec4::new(normalized.x, normalized.y, 0.0, 1.0);
+    // v2(p.x, p.y)
+
+    camera.view_projection_matrix().inverse() * normalized
+
+    // // Then transform by the inverse of the view matrix
+    // return view.getInverseTransform().transformPoint(normalized);
+
+    // Vec2::ZERO
+}
+
+pub fn map_world_to_screen(position: Vec2, transform: Mat4) -> Vec2 {
+    // // First, transform the point by the view matrix
+    // const Vector2f normalized = view.getTransform().transformPoint(point);
+
+    // // Then convert to viewport coordinates
+    // const FloatRect viewport = FloatRect(getViewport(view));
+    // return Vector2i((normalized.cwiseMul({1, -1}) + sf::Vector2f(1, 1)).cwiseDiv({2, 2}).cwiseMul(viewport.getSize()) +
+    //                 viewport.getPosition());
+
+    Vec2::ZERO
 }

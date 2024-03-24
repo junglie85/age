@@ -24,7 +24,7 @@ impl Application {
 
         let camera = gfx.default_camera();
         let center = camera.center();
-        let mut camera = gfx.create_camera(center - v2(100.0, 100.0), camera.size(), device);
+        let mut camera = Camera::new(center - v2(100.0, 100.0), camera.size());
         camera.set_viewport(Rect::new(v2(0.5, 0.0), v2(0.5, 1.0)));
 
         Ok(Self { font, camera })

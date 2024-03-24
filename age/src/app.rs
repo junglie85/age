@@ -159,7 +159,7 @@ impl App {
                             ctx.mouse.flush();
 
                             ctx.device.begin_frame();
-                            ctx.graphics.begin_frame(&ctx.window_target);
+                            ctx.graphics.begin_frame(&ctx.window_target, &ctx.device);
 
                             game.on_tick(&mut ctx);
 
@@ -180,7 +180,6 @@ impl App {
                                 logical_size.width,
                                 logical_size.height,
                                 ctx.scale_factor(),
-                                &ctx.device,
                             );
                         }
 
@@ -194,7 +193,6 @@ impl App {
                                 logical_size.width,
                                 logical_size.height,
                                 ctx.scale_factor(),
-                                &ctx.device,
                             );
                         }
 
@@ -342,10 +340,6 @@ impl Context {
             .create_sprite(&texture, self.graphics.default_sampler(), &self.device)
     }
 
-    pub fn create_camera(&self, center: Vec2, size: Vec2) -> Camera {
-        self.graphics.create_camera(center, size, &self.device)
-    }
-
     pub fn default_camera(&self) -> &Camera {
         self.graphics.default_camera()
     }
@@ -363,7 +357,7 @@ impl Context {
     }
 
     pub fn set_camera(&mut self, camera: &Camera) {
-        self.graphics.set_camera(camera);
+        self.graphics.set_camera(camera, &self.device);
     }
 
     pub fn set_draw_target(&mut self, target: impl Into<DrawTarget>) {

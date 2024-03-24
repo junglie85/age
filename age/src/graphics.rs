@@ -1,10 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-};
+use std::collections::HashMap;
 
 use age_math::{v2, Mat4, Vec2};
 use bytemuck::{cast_slice, Pod, Zeroable};
@@ -31,7 +25,7 @@ pub struct Graphics {
     default_texture_bg: BindGroup,
     default_pipeline: RenderPipeline,
     default_font: Font,
-    camera: Camera,
+    default_camera: Camera,
     meshes: Meshes,
 }
 
@@ -116,8 +110,7 @@ impl Graphics {
         let default_font = Font::from_bytes(font_data)?;
 
         let center = size / 2.0;
-        let camera = Camera::new(center, size, &camera_bgl, device);
-        camera.update(device);
+        let default_camera = Camera::new(center, size);
 
         let meshes = Meshes::new(device);
 
@@ -131,7 +124,7 @@ impl Graphics {
             default_texture_bg,
             default_pipeline,
             default_font,
-            camera,
+            default_camera,
             meshes,
         })
     }
@@ -156,10 +149,10 @@ impl Graphics {
         &self.texture_bgl
     }
 
-    pub(crate) fn begin_frame(&mut self, target: impl Into<DrawTarget>) {
+    pub(crate) fn begin_frame(&mut self, target: impl Into<DrawTarget>, device: &RenderDevice) {
         self.draw_state = DrawState::default();
         self.set_draw_target(target);
-        self.set_camera(&self.camera.clone());
+        self.set_camera(&self.default_camera.clone(), device);
         self.set_render_pipeline(&self.default_pipeline.clone());
     }
 
@@ -184,10 +177,26 @@ impl Graphics {
         previous
     }
 
-    pub fn set_camera(&mut self, camera: &Camera) {
+    pub fn set_camera(&mut self, camera: &Camera, device: &RenderDevice) {
         let current_camera = match self.draw_state.cameras.iter().position(|c| c == camera) {
             Some(index) => index,
             None => {
+                // todo: we can reuse ubo and bg if we don't completely nuke draw state each frame.
+                let ubo = device.create_buffer(&BufferInfo {
+                    label: Some("camera"),
+                    size: std::mem::size_of::<[f32; 16]>() as u64,
+                    ty: BufferType::Uniform,
+                });
+                device.write_buffer(&ubo, &camera.view_projection_matrix().to_cols_array());
+                let bg = device.create_bind_group(&BindGroupInfo {
+                    label: Some("camera"),
+                    layout: &self.camera_bgl,
+                    entries: &[Binding::Uniform { buffer: &ubo }],
+                });
+
+                self.draw_state.camera_ubos.push(ubo);
+                self.draw_state.camera_bgs.push(bg);
+
                 self.draw_state.cameras.push(camera.clone());
                 self.draw_state.cameras.len() - 1
             }
@@ -723,29 +732,16 @@ impl Graphics {
         Sprite::new(texture, sampler, &self.texture_bgl, texture.label(), device)
     }
 
-    pub fn create_camera(&self, center: Vec2, size: Vec2, device: &RenderDevice) -> Camera {
-        let camera = Camera::new(center, size, &self.camera_bgl, device);
-        camera.update(device);
-        camera
-    }
-
     pub fn default_camera(&self) -> &Camera {
-        &self.camera
+        &self.default_camera
     }
 
-    pub fn reconfigure(
-        &mut self,
-        width: u32,
-        height: u32,
-        scale_factor: f32,
-        device: &RenderDevice,
-    ) {
+    pub fn reconfigure(&mut self, width: u32, height: u32, scale_factor: f32) {
         let size = v2(width as f32, height as f32);
         let center = size / 2.0;
-        self.camera.resize(center, size);
+        self.default_camera.resize(center, size);
         let zoom = 1.0 / scale_factor;
-        self.camera.set_zoom(zoom);
-        self.camera.update(device)
+        self.default_camera.set_zoom(zoom);
     }
 }
 
@@ -769,8 +765,8 @@ fn draw(
         panic!("draw target is not set");
     };
 
-    let camera = if let Some(index) = draw_state.current_camera {
-        &draw_state.cameras[index]
+    let (camera, camera_bg) = if let Some(index) = draw_state.current_camera {
+        (&draw_state.cameras[index], &draw_state.camera_bgs[index])
     } else {
         panic!("camera is not set");
     };
@@ -780,7 +776,7 @@ fn draw(
     };
 
     let mut bind_groups = [RenderDevice::EMPTY_BIND_GROUP; RenderDevice::MAX_BIND_GROUPS];
-    bind_groups[0] = Some(camera.bind_group().clone());
+    bind_groups[0] = Some(camera_bg.clone());
     bind_groups[1] = Some(texture_bg.clone());
 
     let translation = (position - origin).floor();
@@ -827,6 +823,8 @@ struct DrawState {
     matrix: Mat4,
     matrix_stack: Vec<Mat4>,
     cameras: Vec<Camera>,
+    camera_ubos: Vec<Buffer>,
+    camera_bgs: Vec<BindGroup>,
     current_camera: Option<usize>,
     clear_color: Option<Color>,
     target: Option<DrawTarget>,
@@ -841,28 +839,12 @@ pub struct Camera {
     rotation: f32,
     viewport: Rect,
     scissor: Rect,
-    ubo: Buffer,
-    bg: BindGroup,
-    dirty: Arc<AtomicBool>,
 }
 
 impl Camera {
     pub const WHOLE_VIEW: Rect = Rect::new(Vec2::ZERO, Vec2::ONE);
 
-    pub fn new(center: Vec2, size: Vec2, bgl: &BindGroupLayout, device: &RenderDevice) -> Self {
-        let ubo = device.create_buffer(&BufferInfo {
-            label: Some("camera"),
-            size: std::mem::size_of::<[f32; 16]>() as u64,
-            ty: BufferType::Uniform,
-        });
-        let bg = device.create_bind_group(&BindGroupInfo {
-            label: Some("camera"),
-            layout: bgl,
-            entries: &[Binding::Uniform { buffer: &ubo }],
-        });
-
-        let dirty = Arc::new(AtomicBool::new(true));
-
+    pub fn new(center: Vec2, size: Vec2) -> Self {
         Self {
             center,
             size,
@@ -870,30 +852,12 @@ impl Camera {
             rotation: 0.0,
             viewport: Self::WHOLE_VIEW,
             scissor: Self::WHOLE_VIEW,
-            ubo,
-            bg,
-            dirty,
         }
-    }
-
-    pub fn bind_group(&self) -> &BindGroup {
-        &self.bg
-    }
-
-    pub fn buffer(&self) -> &Buffer {
-        &self.ubo
     }
 
     pub fn resize(&mut self, center: Vec2, size: Vec2) {
         self.center = center;
         self.size = size;
-        self.dirty.store(true, Ordering::Relaxed);
-    }
-
-    pub fn update(&self, device: &RenderDevice) {
-        if self.dirty.swap(false, Ordering::Relaxed) {
-            device.write_buffer(&self.ubo, &self.view_projection_matrix().to_cols_array());
-        }
     }
 
     pub fn view_projection_matrix(&self) -> Mat4 {
@@ -964,9 +928,6 @@ impl PartialEq for Camera {
             && self.rotation == other.rotation
             && self.viewport == other.viewport
             && self.scissor == other.scissor
-            && self.ubo == other.ubo
-            && self.bg == other.bg
-            && self.dirty.load(Ordering::Relaxed) == other.dirty.load(Ordering::Relaxed)
     }
 }
 

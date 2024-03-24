@@ -115,7 +115,7 @@ impl Sandbox {
         });
 
         let size = v2(ctx.config().width as f32, ctx.config().height as f32);
-        let camera = ctx.create_camera(size / 2.0, size);
+        let camera = Camera::new(size / 2.0, size);
 
         Ok(Self {
             grid,

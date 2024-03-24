@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use age_math::{Mat4, Vec2};
+use age_math::{v2, Mat4, Vec2};
 use winit::{
     event::{ElementState, Event, MouseScrollDelta, WindowEvent},
     event_loop::{EventLoop, EventLoopProxy},
@@ -63,10 +63,7 @@ impl AppBuilder {
         let (width, height) = window.inner_size().into();
         let window_target = WindowTarget::new(width, height, &device);
         let graphics = Graphics::new(
-            0.0,
-            self.config.width as f32,
-            self.config.height as f32,
-            0.0,
+            v2(self.config.width as f32, self.config.height as f32),
             &device,
         )?;
 
@@ -345,9 +342,8 @@ impl Context {
             .create_sprite(&texture, self.graphics.default_sampler(), &self.device)
     }
 
-    pub fn create_camera(&self, left: f32, right: f32, bottom: f32, top: f32) -> Camera {
-        self.graphics
-            .create_camera(left, right, bottom, top, &self.device)
+    pub fn create_camera(&self, center: Vec2, size: Vec2) -> Camera {
+        self.graphics.create_camera(center, size, &self.device)
     }
 
     pub fn default_camera(&self) -> &Camera {

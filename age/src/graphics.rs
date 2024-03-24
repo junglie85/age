@@ -40,13 +40,7 @@ impl Graphics {
     pub const VERTEX_TYPE_OUTLINE: f32 = 2.0;
     pub const VERTEX_TYPE_TEXT: f32 = 3.0;
 
-    pub(crate) fn new(
-        left: f32,
-        right: f32,
-        bottom: f32,
-        top: f32,
-        device: &RenderDevice,
-    ) -> AgeResult<Self> {
+    pub(crate) fn new(size: Vec2, device: &RenderDevice) -> AgeResult<Self> {
         let shader = device.create_shader(&ShaderInfo {
             label: Some("graphics"),
             src: include_str!("shaders/graphics.wgsl"),
@@ -121,7 +115,8 @@ impl Graphics {
         let font_data = include_bytes!("../resources/fonts/RobotoMono-Regular.ttf");
         let default_font = Font::from_bytes(font_data)?;
 
-        let camera = Camera::new(left, right, bottom, top, &camera_bgl, device);
+        let center = size / 2.0;
+        let camera = Camera::new(center, size, &camera_bgl, device);
         camera.update(device);
 
         let meshes = Meshes::new(device);
@@ -728,15 +723,8 @@ impl Graphics {
         Sprite::new(texture, sampler, &self.texture_bgl, texture.label(), device)
     }
 
-    pub fn create_camera(
-        &self,
-        left: f32,
-        right: f32,
-        bottom: f32,
-        top: f32,
-        device: &RenderDevice,
-    ) -> Camera {
-        let camera = Camera::new(left, right, bottom, top, &self.camera_bgl, device);
+    pub fn create_camera(&self, center: Vec2, size: Vec2, device: &RenderDevice) -> Camera {
+        let camera = Camera::new(center, size, &self.camera_bgl, device);
         camera.update(device);
         camera
     }
@@ -752,7 +740,9 @@ impl Graphics {
         scale_factor: f32,
         device: &RenderDevice,
     ) {
-        self.camera.resize(0.0, width as f32, height as f32, 0.0);
+        let size = v2(width as f32, height as f32);
+        let center = size / 2.0;
+        self.camera.resize(center, size);
         let zoom = 1.0 / scale_factor;
         self.camera.set_zoom(zoom);
         self.camera.update(device)
@@ -845,11 +835,8 @@ struct DrawState {
 
 #[derive(Debug, Clone)]
 pub struct Camera {
-    left: f32,
-    right: f32,
-    bottom: f32,
-    top: f32,
-    pos: Vec2,
+    center: Vec2,
+    size: Vec2,
     zoom: f32,
     rotation: f32,
     viewport: Rect,
@@ -862,15 +849,7 @@ pub struct Camera {
 impl Camera {
     pub const WHOLE_VIEW: Rect = Rect::new(Vec2::ZERO, Vec2::ONE);
 
-    pub fn new(
-        left: f32,
-        right: f32,
-        bottom: f32,
-        top: f32,
-
-        bgl: &BindGroupLayout,
-        device: &RenderDevice,
-    ) -> Self {
+    pub fn new(center: Vec2, size: Vec2, bgl: &BindGroupLayout, device: &RenderDevice) -> Self {
         let ubo = device.create_buffer(&BufferInfo {
             label: Some("camera"),
             size: std::mem::size_of::<[f32; 16]>() as u64,
@@ -885,11 +864,8 @@ impl Camera {
         let dirty = Arc::new(AtomicBool::new(true));
 
         Self {
-            left,
-            right,
-            bottom,
-            top,
-            pos: Vec2::ZERO,
+            center,
+            size,
             zoom: 1.0,
             rotation: 0.0,
             viewport: Self::WHOLE_VIEW,
@@ -908,11 +884,9 @@ impl Camera {
         &self.ubo
     }
 
-    pub fn resize(&mut self, left: f32, right: f32, bottom: f32, top: f32) {
-        self.left = left;
-        self.right = right;
-        self.bottom = bottom;
-        self.top = top;
+    pub fn resize(&mut self, center: Vec2, size: Vec2) {
+        self.center = center;
+        self.size = size;
         self.dirty.store(true, Ordering::Relaxed);
     }
 
@@ -923,16 +897,21 @@ impl Camera {
     }
 
     pub fn view_projection_matrix(&self) -> Mat4 {
-        let left = self.left / self.zoom;
-        let right = self.right / self.zoom;
-        let bottom = self.bottom / self.zoom;
-        let top = self.top / self.zoom;
-        let proj = Mat4::orthographic(left, right, bottom, top, 100.0, 0.0);
+        let half_size = self.size / 2.0;
+        let top_left = (self.center - half_size) / self.zoom;
+        let bottom_right = (self.center + half_size) / self.zoom;
+        let proj = Mat4::orthographic(
+            top_left.x,
+            bottom_right.x,
+            bottom_right.y,
+            top_left.y,
+            100.0,
+            0.0,
+        );
 
-        let width = self.right - self.left;
-        let height = self.bottom - self.top;
-        let origin = self.pos + v2(width, height) / 2.0;
-        let view = (Mat4::translation(self.pos)
+        let position = top_left;
+        let origin = top_left;
+        let view = (Mat4::translation(position - origin)
             * Mat4::translation(origin)
             * Mat4::rotation(self.rotation)
             * Mat4::translation(-origin)
@@ -942,12 +921,12 @@ impl Camera {
         proj * view
     }
 
-    pub fn position(&self) -> Vec2 {
-        self.pos
+    pub fn center(&self) -> Vec2 {
+        self.center
     }
 
     pub fn size(&self) -> Vec2 {
-        v2(self.right - self.left, self.bottom - self.top)
+        self.size
     }
 
     pub fn zoom(&self) -> f32 {
@@ -979,13 +958,12 @@ impl Camera {
 
 impl PartialEq for Camera {
     fn eq(&self, other: &Self) -> bool {
-        self.left == other.left
-            && self.right == other.right
-            && self.bottom == other.bottom
-            && self.top == other.top
-            && self.pos == other.pos
+        self.center == other.center
+            && self.size == other.size
             && self.zoom == other.zoom
             && self.rotation == other.rotation
+            && self.viewport == other.viewport
+            && self.scissor == other.scissor
             && self.ubo == other.ubo
             && self.bg == other.bg
             && self.dirty.load(Ordering::Relaxed) == other.dirty.load(Ordering::Relaxed)
@@ -1276,36 +1254,25 @@ impl Sprite {
 }
 
 pub fn map_screen_to_world(position: Vec2, camera: &Camera) -> Vec2 {
-    // // First, convert from viewport coordinates to homogeneous coordinates
-    // const FloatRect viewport   = FloatRect(getViewport(view));
-    // const Vector2f  normalized = Vector2f(-1, 1) +
-    //                             Vector2f(2, -2).cwiseMul(Vector2f(point) - viewport.getPosition()).cwiseDiv(viewport.getSize());
+    // From https://github.com/SFML/SFML/blob/7ec3760fe8b451ef58b73df199066e6396a060f9/src/SFML/Graphics/RenderTarget.cpp#L306
+    // Convert from viewport coordinates to homogeneous coordinates.
     let viewport = camera.viewport();
-    let pos = camera.position();
     let size = camera.size();
     let normalized = v2(-1.0, 1.0)
-        + v2(2.0, -2.0) * (position - viewport.position * pos) / (viewport.size * size);
+        + v2(2.0, -2.0) * (position - viewport.position * size) / (viewport.size * size);
 
-    // let vp = glam::Mat4::from_cols_array(&camera.view_projection_matrix().to_cols_array());
-    // let p = vp.inverse() * glam::Vec4::new(normalized.x, normalized.y, 0.0, 1.0);
-    // v2(p.x, p.y)
-
+    // Then transform by the inverse of the view-projection matrix.
     camera.view_projection_matrix().inverse() * normalized
-
-    // // Then transform by the inverse of the view matrix
-    // return view.getInverseTransform().transformPoint(normalized);
-
-    // Vec2::ZERO
 }
 
-pub fn map_world_to_screen(position: Vec2, transform: Mat4) -> Vec2 {
-    // // First, transform the point by the view matrix
-    // const Vector2f normalized = view.getTransform().transformPoint(point);
+pub fn map_world_to_screen(position: Vec2, camera: &Camera) -> Vec2 {
+    // From https://github.com/SFML/SFML/blob/7ec3760fe8b451ef58b73df199066e6396a060f9/src/SFML/Graphics/RenderTarget.cpp#L326
+    // Transform the point by the view-projection matrix.
+    let normalized = camera.view_projection_matrix() * position;
 
-    // // Then convert to viewport coordinates
-    // const FloatRect viewport = FloatRect(getViewport(view));
-    // return Vector2i((normalized.cwiseMul({1, -1}) + sf::Vector2f(1, 1)).cwiseDiv({2, 2}).cwiseMul(viewport.getSize()) +
-    //                 viewport.getPosition());
-
-    Vec2::ZERO
+    // Then convert to viewport coordinates.
+    let viewport = camera.viewport();
+    let size = camera.size();
+    (normalized * v2(1.0, -1.0) + v2(1.0, 1.0)) / v2(2.0, 2.0) * (viewport.size * size)
+        + (viewport.position * size)
 }

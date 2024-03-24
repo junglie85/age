@@ -1,8 +1,12 @@
-use age::{map_screen_to_world, AgeResult, App, CharSet, Color, Context, Game, MouseButton, SpriteFont};
+use age::{
+    map_screen_to_world, map_world_to_screen, AgeResult, App, Camera, CharSet, Color, Context, Game, MouseButton, Rect,
+    SpriteFont,
+};
 use age_math::v2;
 
 struct Application {
     font: SpriteFont,
+    camera: Camera,
 }
 
 impl Application {
@@ -18,7 +22,12 @@ impl Application {
             device,
         )?;
 
-        Ok(Self { font })
+        let camera = gfx.default_camera();
+        let center = camera.center();
+        let mut camera = gfx.create_camera(center - v2(100.0, 100.0), camera.size(), device);
+        camera.set_viewport(Rect::new(v2(0.5, 0.0), v2(0.5, 1.0)));
+
+        Ok(Self { font, camera })
     }
 }
 
@@ -29,11 +38,13 @@ impl Game for Application {
 
     fn on_tick(&mut self, ctx: &mut Context) {
         let screen_pos = ctx.screen_position();
-        let world_pos = map_screen_to_world(screen_pos.into(), ctx.graphics().default_camera());
+        let world_pos = map_screen_to_world(screen_pos.into(), &self.camera);
+        let and_back = map_world_to_screen(world_pos, &self.camera);
 
+        ctx.set_camera(&self.camera);
         ctx.clear(Color::rgb(1.0, 0.0, 1.0));
 
-        ctx.draw_filled_circle(screen_pos.into(), 5.0, 30, 0.0, v2(5.0, 5.0), Color::rgb(0.0, 1.0, 1.0));
+        ctx.draw_filled_circle(world_pos, 5.0, 30, 0.0, v2(5.0, 5.0), Color::rgb(0.0, 1.0, 1.0));
 
         let advance = v2(0.0, self.font.line_height());
         let font_size = 24.0;
@@ -44,6 +55,10 @@ impl Game for Application {
 
         let position = position + advance;
         let text = format!("World pos: {:.2}, {:.2}", world_pos.x, world_pos.y);
+        ctx.draw_string(&self.font, &text, font_size, color, position);
+
+        let position = position + advance;
+        let text = format!("And back: {:.2}, {:.2}", and_back.x, and_back.y);
         ctx.draw_string(&self.font, &text, font_size, color, position);
 
         let position = position + advance;

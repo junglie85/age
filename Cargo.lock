@@ -31,7 +31,6 @@ dependencies = [
  "age_math",
  "bytemuck",
  "fontdue",
- "glam",
  "image",
  "pollster",
  "wgpu",

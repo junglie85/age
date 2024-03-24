@@ -114,7 +114,8 @@ impl Sandbox {
             ],
         });
 
-        let camera = ctx.create_camera(0.0, ctx.config().width as f32, ctx.config().height as f32, 0.0);
+        let size = v2(ctx.config().width as f32, ctx.config().height as f32);
+        let camera = ctx.create_camera(size / 2.0, size);
 
         Ok(Self {
             grid,
@@ -213,6 +214,8 @@ impl Game for Sandbox {
 
         ctx.pop_matrix();
 
+        // todo: Either replace centering transform with viewport/scissor, or figure out the correct matrix to pass to map
+        // screen to world position here, when window is resized.
         let (window_width, window_height) = ctx.window_size();
 
         let w = window_width as f32 / self.draw_target.width() as f32;

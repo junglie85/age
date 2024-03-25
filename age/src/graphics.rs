@@ -1237,3 +1237,80 @@ pub fn map_world_to_screen(position: Vec2, camera: &Camera) -> Vec2 {
     (normalized * v2(1.0, -1.0) + v2(1.0, 1.0)) / v2(2.0, 2.0) * (viewport.size * size)
         + (viewport.position * size)
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn map_from_screen_space_to_world_space() {
+        let screen_pos = v2(200.0, 300.0);
+        let camera = Camera::new(Vec2::splat(500.0), Vec2::splat(1000.0));
+
+        assert_eq!(
+            v2(200.0, 300.0),
+            map_screen_to_world(screen_pos, &camera).ceil() // Ceil, because rounding error.
+        );
+    }
+
+    #[test]
+    fn map_from_screen_space_to_world_space_with_offset() {
+        let offset = Vec2::splat(300.0);
+        let screen_pos = v2(200.0, 300.0);
+        let camera = Camera::new(Vec2::splat(500.0) + offset, Vec2::splat(1000.0));
+
+        assert_eq!(
+            v2(500.0, 600.0),
+            map_screen_to_world(screen_pos, &camera).ceil() // Ceil, because rounding error.
+        );
+    }
+
+    #[test]
+    fn map_from_screen_space_to_world_space_with_viewport() {
+        let offset = Vec2::splat(300.0);
+        let screen_pos = v2(200.0, 300.0);
+        let mut camera = Camera::new(Vec2::splat(500.0) + offset, Vec2::splat(1000.0));
+        camera.set_viewport(Rect::new(v2(0.5, 0.0), v2(0.5, 1.0)));
+
+        assert_eq!(
+            v2(-300.0, 600.0),
+            map_screen_to_world(screen_pos, &camera).ceil() // Ceil, because rounding error.
+        );
+    }
+
+    #[test]
+    fn map_from_world_space_to_screen_space() {
+        let world_pos = v2(200.0, 300.0);
+        let camera = Camera::new(Vec2::splat(500.0), Vec2::splat(1000.0));
+
+        assert_eq!(
+            v2(200.0, 300.0),
+            map_world_to_screen(world_pos, &camera).ceil() // Ceil, because rounding error.
+        );
+    }
+
+    #[test]
+    fn map_from_world_space_to_screen_space_with_offset() {
+        let offset = Vec2::splat(300.0);
+        let world_pos = v2(200.0, 300.0);
+        let camera = Camera::new(Vec2::splat(500.0) + offset, Vec2::splat(1000.0));
+
+        assert_eq!(
+            v2(-100.0, 0.0),
+            map_world_to_screen(world_pos, &camera).ceil() // Ceil, because rounding error.
+        );
+    }
+
+    #[test]
+    fn map_from_world_space_to_screen_space_with_viewport() {
+        let offset = Vec2::splat(300.0);
+        let world_pos = v2(200.0, 300.0);
+        let mut camera = Camera::new(Vec2::splat(500.0) + offset, Vec2::splat(1000.0));
+        camera.set_viewport(Rect::new(v2(0.5, 0.0), v2(0.5, 1.0)));
+
+        assert_eq!(
+            v2(450.0, 0.0),
+            map_world_to_screen(world_pos, &camera).ceil() // Ceil, because rounding error.
+        );
+    }
+}

@@ -9,10 +9,10 @@ use winit::{
 
 use crate::{
     graphics::Graphics,
-    os::{self, Mouse, MouseButton},
+    os::{self, Keyboard, Mouse, MouseButton},
     renderer::{Color, DrawTarget, RenderDevice, RenderPipeline, WindowSurface, WindowTarget},
-    AgeResult, BindGroup, Camera, Game, Image, Rect, Sprite, SpriteFont, TextureFormat,
-    TextureInfo,
+    AgeResult, BindGroup, Camera, Game, Image, KeyCode, Rect, ScanCode, Sprite, SpriteFont,
+    TextureFormat, TextureInfo,
 };
 
 pub struct AppConfig {
@@ -55,8 +55,10 @@ impl AppBuilder {
     pub fn build(self) -> AgeResult<App> {
         let el = os::create_event_loop::<AppEvent>()?;
         let el_proxy = el.create_proxy();
-        let mouse = os::create_mouse();
         let window = os::create_window(&self.config, &el)?;
+        let mouse = os::create_mouse();
+        let keyboard = os::create_keyboard();
+
         let device = RenderDevice::new()?;
         let surface = WindowSurface::new();
 
@@ -71,6 +73,7 @@ impl AppBuilder {
             config: self.config,
             el_proxy,
             mouse,
+            keyboard,
             window: Arc::new(window),
             device,
             graphics,
@@ -113,15 +116,16 @@ impl App {
             match event {
                 Event::WindowEvent { window_id, event } if ctx.window.id() == window_id => {
                     ctx.mouse.on_event(&event);
+                    ctx.keyboard.on_event(&event);
 
                     match event {
                         WindowEvent::CloseRequested => game.on_exit(&mut ctx),
 
                         WindowEvent::CursorEntered { .. } => {
-                            game.on_mouse_event(MouseEvent::CursorEntered, &mut ctx)
+                            game.on_mouse_event(MouseEvent::CursorEntered, &mut ctx);
                         }
                         WindowEvent::CursorLeft { .. } => {
-                            game.on_mouse_event(MouseEvent::CursorExited, &mut ctx)
+                            game.on_mouse_event(MouseEvent::CursorExited, &mut ctx);
                         }
                         WindowEvent::CursorMoved { position, .. } => game.on_mouse_event(
                             MouseEvent::Moved {
@@ -135,14 +139,17 @@ impl App {
                             state: ElementState::Pressed,
                             ..
                         } => {
-                            game.on_mouse_event(MouseEvent::ButtonPressed(button.into()), &mut ctx)
+                            game.on_mouse_event(MouseEvent::ButtonPressed(button.into()), &mut ctx);
                         }
                         WindowEvent::MouseInput {
                             button,
                             state: ElementState::Released,
                             ..
                         } => {
-                            game.on_mouse_event(MouseEvent::ButtonReleased(button.into()), &mut ctx)
+                            game.on_mouse_event(
+                                MouseEvent::ButtonReleased(button.into()),
+                                &mut ctx,
+                            );
                         }
                         WindowEvent::MouseWheel {
                             delta: MouseScrollDelta::LineDelta(x, y),
@@ -155,8 +162,33 @@ impl App {
                             &mut ctx,
                         ),
 
+                        WindowEvent::KeyboardInput { event, .. } => {
+                            let key = &event.logical_key;
+                            if let (Ok(keycode), Ok(scancode)) = (
+                                TryInto::<KeyCode>::try_into(key),
+                                event.physical_key.try_into(),
+                            ) {
+                                if event.state.is_pressed() {
+                                    game.on_keyboard_event(
+                                        KeyboardEvent::ButtonPressed(keycode, scancode),
+                                        &mut ctx,
+                                    );
+                                } else {
+                                    game.on_keyboard_event(
+                                        KeyboardEvent::ButtonReleased(keycode, scancode),
+                                        &mut ctx,
+                                    );
+                                }
+
+                                if let Some(text) = event.text {
+                                    game.on_text_entered(text.as_str(), &mut ctx);
+                                }
+                            }
+                        }
+
                         WindowEvent::RedrawRequested => {
                             ctx.mouse.flush();
+                            ctx.keyboard.flush();
 
                             ctx.device.begin_frame();
                             ctx.graphics.begin_frame(&ctx.window_target, &ctx.device);
@@ -248,10 +280,18 @@ pub enum MouseEvent {
     Scrolled { delta_x: f32, delta_y: f32 },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum KeyboardEvent {
+    ButtonPressed(KeyCode, ScanCode),
+    ButtonReleased(KeyCode, ScanCode),
+    // TextEntered
+}
+
 pub struct Context {
     config: AppConfig,
     el_proxy: EventLoopProxy<AppEvent>,
     mouse: Mouse,
+    keyboard: Keyboard,
     window: Arc<Window>,
     device: RenderDevice,
     graphics: Graphics,
@@ -270,6 +310,10 @@ impl Context {
 
     pub fn mouse(&self) -> &Mouse {
         &self.mouse
+    }
+
+    pub fn keyboard(&self) -> &Keyboard {
+        &self.keyboard
     }
 
     pub fn render_device(&self) -> &RenderDevice {

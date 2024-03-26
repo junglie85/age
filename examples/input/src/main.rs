@@ -1,8 +1,8 @@
 use age::{
-    map_screen_to_world, map_world_to_screen, AgeResult, App, Camera, CharSet, Color, Context, Game, MouseButton, Rect,
-    SpriteFont,
+    map_screen_to_world, map_world_to_screen, AgeResult, App, Camera, CharSet, Color, Context, Game, KeyCode,
+    KeyLocation, MouseButton, Rect, ScanCode, SpriteFont,
 };
-use age_math::v2;
+use age_math::{v2, Vec2};
 
 struct Application {
     font: SpriteFont,
@@ -37,6 +37,7 @@ impl Game for Application {
     }
 
     fn on_tick(&mut self, ctx: &mut Context) {
+        // todo: map coords (or maybe just the view) need updating when scale factor changes.
         let screen_pos = ctx.screen_position();
         let world_pos = map_screen_to_world(screen_pos.into(), &self.camera);
         let and_back = map_world_to_screen(world_pos, &self.camera);
@@ -62,7 +63,7 @@ impl Game for Application {
         ctx.draw_string(&self.font, &text, font_size, color, position);
 
         let position = position + advance;
-        let text = "Mouse captured: no (todo)";
+        let text = "Mouse captured: no (todo)"; // todo: capture mouse.
         ctx.draw_string(&self.font, text, font_size, color, position);
 
         let released_color = Color::WHITE;
@@ -112,6 +113,16 @@ impl Game for Application {
             released_color
         };
         ctx.draw_string(&self.font, text, font_size, color, position);
+
+        if ctx.keyboard().scan(ScanCode::AltRight).held {
+            ctx.draw_filled_rect(v2(0.0, 0.0), 0.0, v2(100.0, 100.0), Vec2::ZERO, Color::RED);
+        }
+        if ctx.keyboard().key_location(KeyCode::AltGr, KeyLocation::Standard).held {
+            ctx.draw_filled_rect(v2(100.0, 0.0), 0.0, v2(100.0, 100.0), Vec2::ZERO, Color::GREEN);
+        }
+
+        // todo: lost focus, cancel key/button press.
+        // todo: controller/gamepad input.
     }
 }
 

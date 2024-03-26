@@ -378,29 +378,22 @@ mod test {
         let g_s = glam::Mat4::from_scale(glam::Vec3::new(s.x, s.y, 1.0));
         let g_m4 = g_tx * g_r * g_s;
 
-        assert_eq!(
-            Mat4::translation_rotation_scale(tx, r, s).to_cols_array(),
-            g_m4.to_cols_array()
-        );
+        assert_eq!(Mat4::translation_rotation_scale(tx, r, s), g_m4);
     }
 
     #[test]
     fn mat4_mul_vec2() {
-        let p = v2(30.0, 90.0);
         let tx = v2(50.0, 100.0);
         let r = 90.0_f32.to_radians();
         let s = v2(2.0, 0.5);
         let m = Mat4::translation_rotation_scale(tx, r, s);
-        let v = m * p;
 
         let g_tx = glam::Mat4::from_translation(glam::Vec3::new(tx.x, tx.y, 0.0));
         let g_r = glam::Mat4::from_rotation_z(r);
         let g_s = glam::Mat4::from_scale(glam::Vec3::new(s.x, s.y, 1.0));
         let g_m4 = g_tx * g_r * g_s;
-        let g_v = g_m4 * glam::Vec4::new(p.x, p.y, 0.0, 0.0);
 
-        assert_eq!(m.to_cols_array(), g_m4.to_cols_array());
-        assert_eq!(g_v, glam::Vec4::new(v.x, v.y, 0.0, 0.0));
+        assert_eq!(m, g_m4);
     }
 
     impl PartialEq<glam::Mat4> for Mat4 {

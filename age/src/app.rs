@@ -186,7 +186,6 @@ impl App {
                         }
 
                         WindowEvent::RedrawRequested => {
-                            ctx.mouse.flush();
                             ctx.keyboard.flush();
 
                             ctx.device.begin_frame();
@@ -200,6 +199,8 @@ impl App {
                             ctx.window.pre_present_notify();
                             surface.present();
                             ctx.window.request_redraw();
+
+                            ctx.mouse.flush();
                         }
 
                         WindowEvent::Resized(size) => {
@@ -355,20 +356,20 @@ impl Context {
 }
 
 impl Context {
-    pub fn screen_position(&self) -> (f32, f32) {
+    pub fn mouse_position(&self) -> Vec2 {
         self.mouse.position()
     }
 
     pub fn mouse_button_pressed(&self, button: MouseButton) -> bool {
-        self.mouse.button(button).pressed
+        self.mouse.button_pressed(button)
     }
 
     pub fn mouse_button_released(&self, button: MouseButton) -> bool {
-        self.mouse.button(button).released
+        self.mouse.button_released(button)
     }
 
     pub fn mouse_button_held(&self, button: MouseButton) -> bool {
-        self.mouse.button(button).held
+        self.mouse.button_held(button)
     }
 }
 

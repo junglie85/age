@@ -37,9 +37,8 @@ impl Game for Application {
     }
 
     fn on_tick(&mut self, ctx: &mut Context) {
-        // todo: map coords (or maybe just the view) need updating when scale factor changes.
-        let screen_pos = ctx.screen_position();
-        let world_pos = map_screen_to_world(screen_pos.into(), &self.camera);
+        let screen_pos = ctx.mouse_position();
+        let world_pos = map_screen_to_world(screen_pos, &self.camera);
         let and_back = map_world_to_screen(world_pos, &self.camera);
 
         ctx.set_camera(&self.camera);
@@ -51,7 +50,7 @@ impl Game for Application {
         let font_size = 24.0;
         let color = Color::WHITE;
         let position = v2(5.0, 5.0);
-        let text = format!("Screen pos: {:.2}, {:.2}", screen_pos.0, screen_pos.1);
+        let text = format!("Screen pos: {:.2}, {:.2}", screen_pos.x, screen_pos.y);
         ctx.draw_string(&self.font, &text, font_size, color, position);
 
         let position = position + advance;

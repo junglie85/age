@@ -58,77 +58,95 @@ pub struct ButtonState {
     pub released: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+enum ButtonState2 {
+    #[default]
+    Unpressed,
+    Pressed,
+    Held,
+    Released,
+}
+
 pub struct Mouse {
-    previous_position: Vec2,
-    current_position: Vec2,
+    position: Vec2,
     position_delta: Vec2,
-    current_scroll_delta: Vec2,
     scroll_delta: Vec2,
-    previous_button_state: Vec<bool>,
-    current_button_state: Vec<bool>,
-    button_state: Vec<ButtonState>,
+    button_state: HashMap<MouseButton, ButtonState2>,
 }
 
 impl Mouse {
     fn new() -> Self {
         Self {
-            previous_position: Vec2::ZERO,
-            current_position: Vec2::ZERO,
+            position: Vec2::ZERO,
             position_delta: Vec2::ZERO,
-            current_scroll_delta: Vec2::ZERO,
             scroll_delta: Vec2::ZERO,
-            previous_button_state: Vec::with_capacity(5), // Left, right, middle, forward, back.
-            current_button_state: Vec::with_capacity(5),  // Left, right, middle, forward, back.
-            button_state: Vec::with_capacity(5),          // Left, right, middle, forward, back.
+            button_state: HashMap::new(),
         }
     }
 
-    pub fn position(&self) -> (f32, f32) {
-        (self.current_position.x, self.current_position.y)
+    pub fn position(&self) -> Vec2 {
+        self.position
     }
 
-    pub fn position_delta(&self) -> (f32, f32) {
-        (self.position_delta.x, self.position_delta.y)
+    pub fn position_delta(&self) -> Vec2 {
+        self.position_delta
     }
 
-    pub fn scroll_delta(&self) -> (f32, f32) {
-        (self.scroll_delta.x, self.scroll_delta.y)
+    pub fn scroll_delta(&self) -> Vec2 {
+        self.scroll_delta
     }
 
-    pub fn button(&self, button: MouseButton) -> ButtonState {
-        let index = button.as_usize();
-        if index < self.button_state.len() {
-            self.button_state[index]
-        } else {
-            ButtonState::default()
-        }
+    pub fn button_pressed(&self, button: MouseButton) -> bool {
+        *self
+            .button_state
+            .get(&button)
+            .unwrap_or(&ButtonState2::default())
+            == ButtonState2::Pressed
+    }
+
+    pub fn button_held(&self, button: MouseButton) -> bool {
+        *self
+            .button_state
+            .get(&button)
+            .unwrap_or(&ButtonState2::default())
+            == ButtonState2::Held
+    }
+
+    pub fn button_released(&self, button: MouseButton) -> bool {
+        *self
+            .button_state
+            .get(&button)
+            .unwrap_or(&ButtonState2::default())
+            == ButtonState2::Released
     }
 
     pub(crate) fn on_event(&mut self, event: &winit::event::WindowEvent) {
         match event {
             winit::event::WindowEvent::CursorMoved { position, .. } => {
-                self.current_position = v2(position.x as f32, position.y as f32);
+                let new_position = v2(position.x as f32, position.y as f32);
+                self.position_delta = new_position - self.position;
+                self.position = new_position;
             }
 
             winit::event::WindowEvent::MouseWheel {
                 delta: winit::event::MouseScrollDelta::LineDelta(x, y),
                 ..
             } => {
-                self.current_scroll_delta.x += x;
-                self.current_scroll_delta.y += y;
+                self.scroll_delta.x += x;
+                self.scroll_delta.y += y;
             }
 
             winit::event::WindowEvent::MouseInput { state, button, .. } => {
-                let index = Into::<MouseButton>::into(*button).as_usize();
-                if index >= self.button_state.len() {
-                    let new_len = index + 1;
-                    self.previous_button_state.resize(new_len, false);
-                    self.current_button_state.resize(new_len, false);
-                    self.button_state.resize(new_len, ButtonState::default());
-                }
+                let button = Into::<MouseButton>::into(*button);
+                let pressed = state.is_pressed();
 
-                self.current_button_state[index] = *state == winit::event::ElementState::Pressed;
+                let state = self.button_state.entry(button).or_default();
+                *state = match state {
+                    ButtonState2::Unpressed if pressed => ButtonState2::Pressed,
+                    ButtonState2::Pressed if pressed => ButtonState2::Held,
+                    ButtonState2::Held if !pressed => ButtonState2::Released,
+                    _ => unreachable!("what combination of button state ended up here?"),
+                }
             }
 
             _ => (),
@@ -136,27 +154,16 @@ impl Mouse {
     }
 
     pub(crate) fn flush(&mut self) {
-        self.position_delta = self.current_position - self.previous_position;
-        self.previous_position = self.current_position;
+        self.position_delta = Vec2::ZERO;
+        self.scroll_delta = Vec2::ZERO;
 
-        self.scroll_delta = self.current_scroll_delta;
-        self.current_scroll_delta = Vec2::ZERO;
-
-        for (i, state) in self.button_state.iter_mut().enumerate() {
-            state.pressed = false;
-            state.held = false;
-            state.released = false;
-            if self.current_button_state[i] != self.previous_button_state[i] {
-                if self.current_button_state[i] {
-                    state.pressed = !state.held;
-                } else {
-                    state.released = true;
-                }
-            } else {
-                // No change in state, is the button held?
-                state.held = self.current_button_state[i];
+        for (_, state) in self.button_state.iter_mut() {
+            *state = match state {
+                ButtonState2::Unpressed => ButtonState2::Unpressed,
+                ButtonState2::Pressed => ButtonState2::Held,
+                ButtonState2::Held => ButtonState2::Held,
+                ButtonState2::Released => ButtonState2::Unpressed,
             }
-            self.previous_button_state[i] = self.current_button_state[i];
         }
     }
 }
@@ -169,20 +176,6 @@ pub enum MouseButton {
     Back,
     Forward,
     Other(u16),
-}
-
-impl MouseButton {
-    /// Gets the numeric representation of the enum. Cannot cast because Other(u16) variant is non-primitive.
-    fn as_usize(&self) -> usize {
-        match self {
-            MouseButton::Left => 0,
-            MouseButton::Right => 1,
-            MouseButton::Middle => 2,
-            MouseButton::Back => 3,
-            MouseButton::Forward => 4,
-            MouseButton::Other(byte) => 5 + *byte as usize,
-        }
-    }
 }
 
 impl From<winit::event::MouseButton> for MouseButton {
@@ -1450,35 +1443,37 @@ impl From<OsError> for AgeError {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use winit::dpi::PhysicalPosition;
+
+    use super::*;
 
     #[test]
     fn mouse_defaults() {
         let m = Mouse::new();
 
-        assert_eq!((0.0, 0.0), m.position());
-        assert_eq!((0.0, 0.0), m.position_delta());
+        assert_eq!(Vec2::ZERO, m.position());
+        assert_eq!(Vec2::ZERO, m.position_delta());
+        assert_eq!(Vec2::ZERO, m.scroll_delta());
 
-        assert!(!m.button(MouseButton::Left).pressed);
-        assert!(!m.button(MouseButton::Left).released);
-        assert!(!m.button(MouseButton::Left).held);
+        assert!(!m.button_pressed(MouseButton::Left));
+        assert!(!m.button_held(MouseButton::Left));
+        assert!(!m.button_released(MouseButton::Left));
 
-        assert!(!m.button(MouseButton::Right).pressed);
-        assert!(!m.button(MouseButton::Right).released);
-        assert!(!m.button(MouseButton::Right).held);
+        assert!(!m.button_pressed(MouseButton::Right));
+        assert!(!m.button_held(MouseButton::Right));
+        assert!(!m.button_released(MouseButton::Right));
 
-        assert!(!m.button(MouseButton::Middle).pressed);
-        assert!(!m.button(MouseButton::Middle).released);
-        assert!(!m.button(MouseButton::Middle).held);
+        assert!(!m.button_pressed(MouseButton::Middle));
+        assert!(!m.button_held(MouseButton::Middle));
+        assert!(!m.button_released(MouseButton::Middle));
 
-        assert!(!m.button(MouseButton::Back).pressed);
-        assert!(!m.button(MouseButton::Back).released);
-        assert!(!m.button(MouseButton::Back).held);
+        assert!(!m.button_pressed(MouseButton::Back));
+        assert!(!m.button_held(MouseButton::Back));
+        assert!(!m.button_released(MouseButton::Back));
 
-        assert!(!m.button(MouseButton::Forward).pressed);
-        assert!(!m.button(MouseButton::Forward).released);
-        assert!(!m.button(MouseButton::Forward).held);
+        assert!(!m.button_pressed(MouseButton::Forward));
+        assert!(!m.button_held(MouseButton::Forward));
+        assert!(!m.button_released(MouseButton::Forward));
     }
 
     #[test]
@@ -1486,59 +1481,56 @@ mod test {
         let mut m = Mouse::new();
 
         m.on_event(&cursor_moved(10.0, 10.0));
+
+        assert_eq!(v2(10.0, 10.0), m.position());
+        assert_eq!(v2(10.0, 10.0), m.position_delta());
+
         m.flush();
-
-        assert_eq!((10.0, 10.0), m.position());
-        assert_eq!((10.0, 10.0), m.position_delta());
-
         m.on_event(&cursor_moved(15.0, 20.0));
-        m.flush();
 
-        assert_eq!((15.0, 20.0), m.position());
-        assert_eq!((5.0, 10.0), m.position_delta());
+        assert_eq!(v2(15.0, 20.0), m.position());
+        assert_eq!(v2(5.0, 10.0), m.position_delta());
     }
 
     #[test]
     fn mouse_left_button() {
         let mut m = Mouse::new();
 
+        assert!(!m.button_pressed(MouseButton::Left));
+        assert!(!m.button_held(MouseButton::Left));
+        assert!(!m.button_released(MouseButton::Left));
+
+        m.flush();
         m.on_event(&mouse_input(
             winit::event::ElementState::Pressed,
             winit::event::MouseButton::Left,
         ));
-        m.flush();
 
-        assert!(m.button(MouseButton::Left).pressed);
-        assert!(!m.button(MouseButton::Left).held);
-        assert!(!m.button(MouseButton::Left).released);
-
-        m.flush();
-
-        assert!(!m.button(MouseButton::Left).pressed);
-        assert!(m.button(MouseButton::Left).held);
-        assert!(!m.button(MouseButton::Left).released);
+        assert!(m.button_pressed(MouseButton::Left));
+        assert!(!m.button_held(MouseButton::Left));
+        assert!(!m.button_released(MouseButton::Left));
 
         m.flush();
 
-        assert!(!m.button(MouseButton::Left).pressed);
-        assert!(m.button(MouseButton::Left).held);
-        assert!(!m.button(MouseButton::Left).released);
+        assert!(!m.button_pressed(MouseButton::Left));
+        assert!(m.button_held(MouseButton::Left));
+        assert!(!m.button_released(MouseButton::Left));
 
+        m.flush();
         m.on_event(&mouse_input(
             winit::event::ElementState::Released,
             winit::event::MouseButton::Left,
         ));
+
+        assert!(!m.button_pressed(MouseButton::Left));
+        assert!(!m.button_held(MouseButton::Left));
+        assert!(m.button_released(MouseButton::Left));
+
         m.flush();
 
-        assert!(!m.button(MouseButton::Left).pressed);
-        assert!(!m.button(MouseButton::Left).held);
-        assert!(m.button(MouseButton::Left).released);
-
-        m.flush();
-
-        assert!(!m.button(MouseButton::Left).pressed);
-        assert!(!m.button(MouseButton::Left).held);
-        assert!(!m.button(MouseButton::Left).released);
+        assert!(!m.button_pressed(MouseButton::Left));
+        assert!(!m.button_held(MouseButton::Left));
+        assert!(!m.button_released(MouseButton::Left));
     }
 
     #[test]
@@ -1546,24 +1538,23 @@ mod test {
         let mut m = Mouse::new();
 
         m.on_event(&mouse_wheel(1.0, 2.0));
+
+        assert_eq!(v2(1.0, 2.0), m.scroll_delta());
+
         m.flush();
-
-        assert_eq!((1.0, 2.0), m.scroll_delta());
-
         m.on_event(&mouse_wheel(-1.0, -2.0));
+
+        assert_eq!(v2(-1.0, -2.0), m.scroll_delta());
+
         m.flush();
-
-        assert_eq!((-1.0, -2.0), m.scroll_delta());
-
         m.on_event(&mouse_wheel(3.0, 4.0));
         m.on_event(&mouse_wheel(5.0, 6.0));
+
+        assert_eq!(v2(8.0, 10.0), m.scroll_delta());
+
         m.flush();
 
-        assert_eq!((8.0, 10.0), m.scroll_delta());
-
-        m.flush();
-
-        assert_eq!((0.0, 0.0), m.scroll_delta());
+        assert_eq!(v2(0.0, 0.0), m.scroll_delta());
     }
 
     fn cursor_moved(x: f32, y: f32) -> winit::event::WindowEvent {

@@ -62,8 +62,7 @@ impl AppBuilder {
         let device = RenderDevice::new()?;
         let surface = WindowSurface::new();
 
-        let (width, height) = window.inner_size().into();
-        let window_target = WindowTarget::new(width, height, &device);
+        let window_target = WindowTarget::new(self.config.width, self.config.height, &device);
         let graphics = Graphics::new(
             v2(self.config.width as f32, self.config.height as f32),
             &device,
@@ -213,6 +212,8 @@ impl App {
                                 logical_size.height,
                                 ctx.scale_factor(),
                             );
+
+                            game.on_size_changed(logical_size.width, logical_size.height, &mut ctx);
                         }
 
                         WindowEvent::ScaleFactorChanged { .. } => {
@@ -226,6 +227,8 @@ impl App {
                                 logical_size.height,
                                 ctx.scale_factor(),
                             );
+
+                            game.on_scale_factor_changed(ctx.scale_factor(), &mut ctx);
                         }
 
                         _ => {}

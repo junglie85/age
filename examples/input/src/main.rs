@@ -124,6 +124,10 @@ impl Game for Application {
         // todo: lost focus, cancel key/button press.
         // todo: controller/gamepad input.
     }
+
+    fn on_scale_factor_changed(&mut self, scale_factor: f32, _ctx: &mut Context) {
+        self.camera.set_scale_factor(scale_factor);
+    }
 }
 
 fn main() {

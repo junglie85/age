@@ -247,6 +247,10 @@ impl Game for Sandbox {
     fn on_exit(&mut self, ctx: &mut Context) {
         ctx.exit();
     }
+
+    fn on_scale_factor_changed(&mut self, scale_factor: f32, _ctx: &mut Context) {
+        self.camera.set_scale_factor(scale_factor);
+    }
 }
 
 fn main() {

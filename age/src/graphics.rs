@@ -740,8 +740,12 @@ impl Graphics {
         let size = v2(width as f32, height as f32);
         let center = size / 2.0;
         self.default_camera.resize(center, size);
-        let zoom = 1.0 / scale_factor;
-        self.default_camera.set_zoom(zoom);
+        self.default_camera.set_zoom(1.0 / scale_factor);
+        self.default_camera.set_scale_factor(scale_factor);
+        println!(
+            "graphics reconfigured: {width}, {height}, {:.2}",
+            scale_factor
+        );
     }
 }
 
@@ -806,7 +810,6 @@ fn draw(
     device.push_draw_command(DrawCommand {
         clear_color: draw_state.clear_color.take(),
         target: target.clone(),
-        size: camera.size(),
         viewport: camera.viewport(),
         scissor: camera.scissor(),
         bind_groups,
@@ -836,6 +839,7 @@ pub struct Camera {
     center: Vec2,
     size: Vec2,
     zoom: f32,
+    scale_factor: f32,
     rotation: f32,
     viewport: Rect,
     scissor: Rect,
@@ -849,6 +853,7 @@ impl Camera {
             center,
             size,
             zoom: 1.0,
+            scale_factor: 1.0,
             rotation: 0.0,
             viewport: Self::WHOLE_VIEW,
             scissor: Self::WHOLE_VIEW,
@@ -899,6 +904,14 @@ impl Camera {
 
     pub fn set_zoom(&mut self, zoom: f32) {
         self.zoom = zoom;
+    }
+
+    pub fn scale_factor(&self) -> f32 {
+        self.scale_factor
+    }
+
+    pub fn set_scale_factor(&mut self, scale_factor: f32) {
+        self.scale_factor = scale_factor;
     }
 
     pub fn viewport(&self) -> Rect {
@@ -1215,6 +1228,9 @@ impl Sprite {
 }
 
 pub fn map_screen_to_world(position: Vec2, camera: &Camera) -> Vec2 {
+    // Remove scale factor.
+    let position = position / camera.scale_factor();
+
     // From https://github.com/SFML/SFML/blob/7ec3760fe8b451ef58b73df199066e6396a060f9/src/SFML/Graphics/RenderTarget.cpp#L306
     // Convert from viewport coordinates to homogeneous coordinates.
     let viewport = camera.viewport();
@@ -1234,8 +1250,12 @@ pub fn map_world_to_screen(position: Vec2, camera: &Camera) -> Vec2 {
     // Then convert to viewport coordinates.
     let viewport = camera.viewport();
     let size = camera.size();
-    (normalized * v2(1.0, -1.0) + v2(1.0, 1.0)) / v2(2.0, 2.0) * (viewport.size * size)
-        + (viewport.position * size)
+    let position = (normalized * v2(1.0, -1.0) + v2(1.0, 1.0)) / v2(2.0, 2.0)
+        * (viewport.size * size)
+        + (viewport.position * size);
+
+    // Apply scale factor.
+    position * camera.scale_factor()
 }
 
 #[cfg(test)]

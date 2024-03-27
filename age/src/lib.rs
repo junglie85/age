@@ -40,4 +40,8 @@ pub trait Game {
     fn on_keyboard_event(&mut self, _event: KeyboardEvent, _ctx: &mut Context) {}
 
     fn on_text_entered(&mut self, _text: &str, _ctx: &mut Context) {}
+
+    fn on_size_changed(&mut self, _width: u32, _height: u32, _ctx: &mut Context) {}
+
+    fn on_scale_factor_changed(&mut self, _scale_factor: f32, _ctx: &mut Context) {}
 }

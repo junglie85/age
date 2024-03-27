@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use age_math::{v2, Vec2};
+use age_math::Vec2;
 use bytemuck::cast_slice;
 use wgpu::{
     BindGroupDescriptor, BindGroupLayoutDescriptor, BindingResource, BlendState, BufferBindingType,
@@ -143,7 +143,6 @@ impl RenderDevice {
         for DrawCommand {
             clear_color,
             target,
-            size,
             viewport,
             scissor,
             bind_groups,
@@ -198,13 +197,15 @@ impl RenderDevice {
                 unreachable!("render pass will always be set by this point");
             };
 
+            let (width, height) = target.size();
+            let (width, height) = (width as f32, height as f32);
             if Some(viewport) != current_viewport.as_ref() {
                 current_viewport = Some(*viewport);
                 pass.set_viewport(
-                    viewport.position.x * size.x,
-                    viewport.position.y * size.y,
-                    viewport.size.x * size.x,
-                    viewport.size.y * size.y,
+                    viewport.position.x * width,
+                    viewport.position.y * height,
+                    viewport.size.x * width,
+                    viewport.size.y * height,
                     0.0,
                     1.0,
                 );
@@ -213,10 +214,10 @@ impl RenderDevice {
             if Some(scissor) != current_scissor.as_ref() {
                 current_scissor = Some(*scissor);
                 pass.set_scissor_rect(
-                    (scissor.position.x * size.x) as u32,
-                    (scissor.position.y * size.y) as u32,
-                    (scissor.size.x * size.x) as u32,
-                    (scissor.size.y * size.y) as u32,
+                    (scissor.position.x * width) as u32,
+                    (scissor.position.y * height) as u32,
+                    (scissor.size.x * width) as u32,
+                    (scissor.size.y * height) as u32,
                 );
             }
 
@@ -766,10 +767,13 @@ impl From<FilterMode> for wgpu::FilterMode {
 pub struct DrawTarget {
     color_target: TextureView,
     label: Option<String>,
+    width: u32,
+    height: u32,
 }
 
 impl DrawTarget {
     pub fn new(color_target: &Texture, label: Option<&str>) -> Self {
+        let (width, height) = color_target.size();
         let color_target = color_target.create_view(&TextureViewInfo {
             label: Some("color target"),
         });
@@ -777,6 +781,8 @@ impl DrawTarget {
         Self {
             color_target,
             label: label.map(|s| s.to_string()),
+            width,
+            height,
         }
     }
 
@@ -787,10 +793,15 @@ impl DrawTarget {
     pub fn label(&self) -> Option<&str> {
         self.label.as_deref()
     }
+
+    pub fn size(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
 }
 
 impl From<&Texture> for DrawTarget {
     fn from(texture: &Texture) -> Self {
+        let (width, height) = texture.size();
         let view = texture.create_view(&TextureViewInfo {
             label: texture.label(),
         });
@@ -798,6 +809,8 @@ impl From<&Texture> for DrawTarget {
         DrawTarget {
             color_target: view.clone(),
             label: texture.label().map(|s| s.to_string()),
+            width,
+            height,
         }
     }
 }
@@ -815,6 +828,8 @@ impl TryFrom<&mut WindowSurface> for DrawTarget {
         Ok(DrawTarget {
             color_target: surface.acquire()?,
             label: Some("window surface".to_string()),
+            width: surface.width,
+            height: surface.height,
         })
     }
 }
@@ -955,7 +970,6 @@ impl WindowTarget {
         device.push_draw_command(DrawCommand {
             clear_color: Some(Color::RED),
             target: surface.try_into()?,
-            size: v2(surface.width as f32, surface.height as f32),
             viewport: Rect::new(Vec2::ZERO, Vec2::ONE),
             scissor: Rect::new(Vec2::ZERO, Vec2::ONE),
             bind_groups,
@@ -1410,7 +1424,6 @@ impl CommandBuffer {
 pub struct DrawCommand {
     pub clear_color: Option<Color>,
     pub target: DrawTarget,
-    pub size: Vec2,
     pub viewport: Rect,
     pub scissor: Rect,
     pub bind_groups: [Option<BindGroup>; RenderDevice::MAX_BIND_GROUPS],

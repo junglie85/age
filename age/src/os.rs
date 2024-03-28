@@ -1983,3 +1983,576 @@ mod test {
         assert!(!k.super_key());
     }
 }
+
+pub struct Keyboard2 {
+    key_state: HashMap<Key, ButtonState2>,
+}
+
+impl Keyboard2 {
+    fn new() -> Self {
+        Self {
+            key_state: HashMap::new(),
+        }
+    }
+
+    pub fn key_pressed(&self, key: impl Into<Key>) -> bool {
+        *self
+            .key_state
+            .get(&key.into())
+            .unwrap_or(&ButtonState2::default())
+            == ButtonState2::Pressed
+    }
+
+    pub fn key_held(&self, key: impl Into<Key>) -> bool {
+        *self
+            .key_state
+            .get(&key.into())
+            .unwrap_or(&ButtonState2::default())
+            == ButtonState2::Held
+    }
+
+    pub fn key_released(&self, key: impl Into<Key>) -> bool {
+        *self
+            .key_state
+            .get(&key.into())
+            .unwrap_or(&ButtonState2::default())
+            == ButtonState2::Released
+    }
+
+    pub fn alt_key(&self) -> bool {
+        false
+    }
+
+    pub fn control_key(&self) -> bool {
+        false
+    }
+
+    pub fn shift_key(&self) -> bool {
+        false
+    }
+
+    pub fn super_key(&self) -> bool {
+        false
+    }
+
+    pub(crate) fn on_event(&mut self, event: winit::event::WindowEvent) {
+        // winit::event::WindowEvent::MouseInput { state, button, .. } => {
+
+        // }
+    }
+
+    fn on_keyboard_input(
+        &mut self,
+        physical_key: winit::keyboard::PhysicalKey,
+        logical_key: &winit::keyboard::Key,
+        location: winit::keyboard::KeyLocation,
+        state: winit::event::ElementState,
+        repeat: bool,
+    ) {
+        // if repeat {
+        //     return;
+        // }
+
+        fn update_key_state(key: Key, pressed: bool, key_state: &mut HashMap<Key, ButtonState2>) {
+            let state = key_state.entry(key).or_default();
+            *state = match state {
+                ButtonState2::Unpressed if pressed => ButtonState2::Pressed,
+                ButtonState2::Pressed if pressed => ButtonState2::Held,
+                ButtonState2::Held if !pressed => ButtonState2::Released,
+                _ => unreachable!("what combination of button state ended up here?"),
+            }
+        }
+
+        let pressed = state.is_pressed();
+
+        if let winit::keyboard::PhysicalKey::Code(keycode) = physical_key {
+            let key: Key = Into::<ScanCode>::into(keycode).into();
+            // self.current_scan_codes.insert((keycode.into(), pressed));
+            update_key_state(key, pressed, &mut self.key_state);
+        }
+
+        if let winit::keyboard::Key::Character(c) = logical_key {
+            let mut chars = c.chars();
+            assert!(chars.clone().count() == 1);
+            let keycode = KeyCode::Char(chars.next().unwrap());
+            let key: Key = (keycode, location.into()).into();
+
+            // self.current_key_codes.insert((
+            //     KeyCode::Char(chars.next().unwrap()),
+            //     location.into(),
+            //     pressed,
+            // ));
+            update_key_state(key, pressed, &mut self.key_state);
+        } else if let winit::keyboard::Key::Named(key) = logical_key {
+            let key: Key = ((*key).into(), location.into()).into();
+            // self.current_key_codes
+            //     .insert(((*key).into(), location.into(), pressed));
+            update_key_state(key, pressed, &mut self.key_state);
+        }
+
+        /////
+    }
+
+    pub(crate) fn flush(&mut self) {
+        // for (_, state) in self.key_state.iter_mut() {
+        //     *state = match state {
+        //         ButtonState2::Unpressed => ButtonState2::Unpressed,
+        //         ButtonState2::Pressed => ButtonState2::Held,
+        //         ButtonState2::Held => ButtonState2::Held,
+        //         ButtonState2::Released => ButtonState2::Unpressed,
+        //     }
+        // }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Key {
+    KeyCode {
+        keycode: KeyCode,
+        location: KeyLocation,
+    },
+    ScanCode(ScanCode),
+}
+
+impl From<char> for Key {
+    fn from(c: char) -> Self {
+        Key::KeyCode {
+            keycode: KeyCode::Char(c),
+            location: KeyLocation::Standard,
+        }
+    }
+}
+
+impl From<KeyCode> for Key {
+    fn from(keycode: KeyCode) -> Self {
+        Key::KeyCode {
+            keycode,
+            location: KeyLocation::Standard,
+        }
+    }
+}
+
+impl From<(KeyCode, KeyLocation)> for Key {
+    fn from((keycode, location): (KeyCode, KeyLocation)) -> Self {
+        Key::KeyCode { keycode, location }
+    }
+}
+
+impl From<ScanCode> for Key {
+    fn from(scancode: ScanCode) -> Self {
+        Key::ScanCode(scancode)
+    }
+}
+
+#[cfg(test)]
+mod keytest {
+    use super::*;
+
+    #[test]
+    fn keyboard_defaults() {
+        let k = Keyboard2::new();
+
+        assert!(!k.key_pressed('q'));
+        assert!(!k.key_held('q'));
+        assert!(!k.key_released('q'));
+
+        assert!(!k.key_pressed(KeyCode::Space));
+        assert!(!k.key_held(KeyCode::Space));
+        assert!(!k.key_released(KeyCode::Space));
+
+        assert!(!k.key_pressed((KeyCode::Alt, KeyLocation::Left)));
+        assert!(!k.key_held((KeyCode::Alt, KeyLocation::Left)));
+        assert!(!k.key_released((KeyCode::Alt, KeyLocation::Left)));
+
+        assert!(!k.key_pressed(ScanCode::Q));
+        assert!(!k.key_held(ScanCode::Q));
+        assert!(!k.key_released(ScanCode::Q));
+
+        assert!(!k.alt_key());
+        assert!(!k.control_key());
+        assert!(!k.shift_key());
+        assert!(!k.super_key());
+    }
+
+    #[test]
+    fn keyboard_q_key() {
+        let mut k = Keyboard2::new();
+
+        assert!(!k.key_pressed('q'));
+        assert!(!k.key_held('q'));
+        assert!(!k.key_released('q'));
+
+        assert!(!k.key_pressed(ScanCode::Q));
+        assert!(!k.key_held(ScanCode::Q));
+        assert!(!k.key_released(ScanCode::Q));
+
+        k.on_keyboard_input(
+            winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyQ),
+            &winit::keyboard::Key::Character("q".into()),
+            winit::keyboard::KeyLocation::Standard,
+            winit::event::ElementState::Pressed,
+            false,
+        );
+
+        assert!(k.key_pressed('q'));
+        assert!(!k.key_held('q'));
+        assert!(!k.key_released('q'));
+
+        assert!(k.key_pressed(ScanCode::Q));
+        assert!(!k.key_held(ScanCode::Q));
+        assert!(!k.key_released(ScanCode::Q));
+
+        // k.flush();
+
+        // assert!(!k.key_pressed('q'));
+        // assert!(k.key_held('q'));
+        // assert!(!k.key_pressed('q'));
+
+        // assert!(!k.key_pressed(ScanCode::Q));
+        // assert!(k.key_held(ScanCode::Q));
+        // assert!(!k.key_released(ScanCode::Q));
+
+        // k.flush();
+        // k.on_keyboard_input(
+        //     winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyQ),
+        //     &winit::keyboard::Key::Character("q".into()),
+        //     winit::keyboard::KeyLocation::Standard,
+        //     winit::event::ElementState::Pressed,
+        //     true,
+        // );
+
+        // assert!(!k.key_pressed('q'));
+        // assert!(k.key_held('q'));
+        // assert!(!k.key_pressed('q'));
+
+        // assert!(!k.key_pressed(ScanCode::Q));
+        // assert!(k.key_held(ScanCode::Q));
+        // assert!(!k.key_released(ScanCode::Q));
+
+        // k.flush();
+        // k.on_keyboard_input(
+        //     winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyQ),
+        //     &winit::keyboard::Key::Character("q".into()),
+        //     winit::keyboard::KeyLocation::Standard,
+        //     winit::event::ElementState::Released,
+        //     false,
+        // );
+
+        // assert!(!k.key_pressed('q'));
+        // assert!(!k.key_held('q'));
+        // assert!(k.key_pressed('q'));
+
+        // assert!(!k.key_pressed(ScanCode::Q));
+        // assert!(!k.key_held(ScanCode::Q));
+        // assert!(k.key_released(ScanCode::Q));
+
+        // k.flush();
+
+        // assert!(!k.key_pressed('q'));
+        // assert!(!k.key_held('q'));
+        // assert!(!k.key_pressed('q'));
+
+        // assert!(!k.key_pressed(ScanCode::Q));
+        // assert!(!k.key_held(ScanCode::Q));
+        // assert!(!k.key_released(ScanCode::Q));
+    }
+
+    // #[test]
+    // fn keyboard_esc_key() {
+    //     let mut k = Keyboard::new();
+
+    //     k.on_keyboard_input(
+    //         winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::Escape),
+    //         &winit::keyboard::Key::Named(winit::keyboard::NamedKey::Escape),
+    //         winit::keyboard::KeyLocation::Standard,
+    //         winit::event::ElementState::Pressed,
+    //         false,
+    //     );
+
+    //     k.flush();
+
+    //     assert!(k.key(KeyCode::Escape).pressed);
+    //     assert!(!k.key(KeyCode::Escape).held);
+    //     assert!(!k.key(KeyCode::Escape).released);
+
+    //     assert!(k.scan(ScanCode::Escape).pressed);
+    //     assert!(!k.scan(ScanCode::Escape).held);
+    //     assert!(!k.scan(ScanCode::Escape).released);
+
+    //     k.flush();
+
+    //     assert!(!k.key(KeyCode::Escape).pressed);
+    //     assert!(k.key(KeyCode::Escape).held);
+    //     assert!(!k.key(KeyCode::Escape).released);
+
+    //     assert!(!k.scan(ScanCode::Escape).pressed);
+    //     assert!(k.scan(ScanCode::Escape).held);
+    //     assert!(!k.scan(ScanCode::Escape).released);
+
+    //     k.on_keyboard_input(
+    //         winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::Escape),
+    //         &winit::keyboard::Key::Named(winit::keyboard::NamedKey::Escape),
+    //         winit::keyboard::KeyLocation::Standard,
+    //         winit::event::ElementState::Pressed,
+    //         true,
+    //     );
+
+    //     k.flush();
+
+    //     assert!(!k.key(KeyCode::Escape).pressed);
+    //     assert!(k.key(KeyCode::Escape).held);
+    //     assert!(!k.key(KeyCode::Escape).released);
+
+    //     assert!(!k.scan(ScanCode::Escape).pressed);
+    //     assert!(k.scan(ScanCode::Escape).held);
+    //     assert!(!k.scan(ScanCode::Escape).released);
+
+    //     k.on_keyboard_input(
+    //         winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::Escape),
+    //         &winit::keyboard::Key::Named(winit::keyboard::NamedKey::Escape),
+    //         winit::keyboard::KeyLocation::Standard,
+    //         winit::event::ElementState::Released,
+    //         false,
+    //     );
+
+    //     k.flush();
+
+    //     assert!(!k.key(KeyCode::Escape).pressed);
+    //     assert!(!k.key(KeyCode::Escape).held);
+    //     assert!(k.key(KeyCode::Escape).released);
+
+    //     assert!(!k.scan(ScanCode::Escape).pressed);
+    //     assert!(!k.scan(ScanCode::Escape).held);
+    //     assert!(k.scan(ScanCode::Escape).released);
+
+    //     k.flush();
+
+    //     assert!(!k.key(KeyCode::Escape).pressed);
+    //     assert!(!k.key(KeyCode::Escape).held);
+    //     assert!(!k.key(KeyCode::Escape).released);
+
+    //     assert!(!k.scan(ScanCode::Escape).pressed);
+    //     assert!(!k.scan(ScanCode::Escape).held);
+    //     assert!(!k.scan(ScanCode::Escape).released);
+    // }
+
+    // #[test]
+    // fn keyboard_alt_key() {
+    //     let mut k = Keyboard::new();
+
+    //     assert!(!k.alt_key());
+
+    //     k.on_keyboard_input(
+    //         winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::AltLeft),
+    //         &winit::keyboard::Key::Named(winit::keyboard::NamedKey::Alt),
+    //         winit::keyboard::KeyLocation::Left,
+    //         winit::event::ElementState::Pressed,
+    //         false,
+    //     );
+
+    //     k.flush();
+
+    //     assert!(k.alt_key());
+
+    //     k.on_keyboard_input(
+    //         winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::AltLeft),
+    //         &winit::keyboard::Key::Named(winit::keyboard::NamedKey::Alt),
+    //         winit::keyboard::KeyLocation::Left,
+    //         winit::event::ElementState::Released,
+    //         false,
+    //     );
+
+    //     k.flush();
+
+    //     assert!(!k.alt_key());
+
+    //     k.on_keyboard_input(
+    //         winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::AltRight),
+    //         &winit::keyboard::Key::Named(winit::keyboard::NamedKey::Alt),
+    //         winit::keyboard::KeyLocation::Right,
+    //         winit::event::ElementState::Pressed,
+    //         false,
+    //     );
+
+    //     k.flush();
+
+    //     assert!(k.alt_key());
+
+    //     k.on_keyboard_input(
+    //         winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::AltRight),
+    //         &winit::keyboard::Key::Named(winit::keyboard::NamedKey::Alt),
+    //         winit::keyboard::KeyLocation::Right,
+    //         winit::event::ElementState::Released,
+    //         false,
+    //     );
+
+    //     k.flush();
+
+    //     assert!(!k.alt_key());
+    // }
+
+    // #[test]
+    // fn keyboard_control_key() {
+    //     let mut k = Keyboard::new();
+
+    //     assert!(!k.control_key());
+
+    //     k.on_keyboard_input(
+    //         winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::ControlLeft),
+    //         &winit::keyboard::Key::Named(winit::keyboard::NamedKey::Control),
+    //         winit::keyboard::KeyLocation::Left,
+    //         winit::event::ElementState::Pressed,
+    //         false,
+    //     );
+
+    //     k.flush();
+
+    //     assert!(k.control_key());
+
+    //     k.on_keyboard_input(
+    //         winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::ControlLeft),
+    //         &winit::keyboard::Key::Named(winit::keyboard::NamedKey::Control),
+    //         winit::keyboard::KeyLocation::Left,
+    //         winit::event::ElementState::Released,
+    //         false,
+    //     );
+
+    //     k.flush();
+
+    //     assert!(!k.control_key());
+
+    //     k.on_keyboard_input(
+    //         winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::ControlRight),
+    //         &winit::keyboard::Key::Named(winit::keyboard::NamedKey::Control),
+    //         winit::keyboard::KeyLocation::Right,
+    //         winit::event::ElementState::Pressed,
+    //         false,
+    //     );
+
+    //     k.flush();
+
+    //     assert!(k.control_key());
+
+    //     k.on_keyboard_input(
+    //         winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::ControlRight),
+    //         &winit::keyboard::Key::Named(winit::keyboard::NamedKey::Control),
+    //         winit::keyboard::KeyLocation::Right,
+    //         winit::event::ElementState::Released,
+    //         false,
+    //     );
+
+    //     k.flush();
+
+    //     assert!(!k.control_key());
+    // }
+
+    // #[test]
+    // fn keyboard_shift_key() {
+    //     let mut k = Keyboard::new();
+
+    //     assert!(!k.shift_key());
+
+    //     k.on_keyboard_input(
+    //         winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::ShiftLeft),
+    //         &winit::keyboard::Key::Named(winit::keyboard::NamedKey::Shift),
+    //         winit::keyboard::KeyLocation::Left,
+    //         winit::event::ElementState::Pressed,
+    //         false,
+    //     );
+
+    //     k.flush();
+
+    //     assert!(k.shift_key());
+
+    //     k.on_keyboard_input(
+    //         winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::ShiftLeft),
+    //         &winit::keyboard::Key::Named(winit::keyboard::NamedKey::Shift),
+    //         winit::keyboard::KeyLocation::Left,
+    //         winit::event::ElementState::Released,
+    //         false,
+    //     );
+
+    //     k.flush();
+
+    //     assert!(!k.shift_key());
+
+    //     k.on_keyboard_input(
+    //         winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::ShiftRight),
+    //         &winit::keyboard::Key::Named(winit::keyboard::NamedKey::Shift),
+    //         winit::keyboard::KeyLocation::Right,
+    //         winit::event::ElementState::Pressed,
+    //         false,
+    //     );
+
+    //     k.flush();
+
+    //     assert!(k.shift_key());
+
+    //     k.on_keyboard_input(
+    //         winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::ShiftRight),
+    //         &winit::keyboard::Key::Named(winit::keyboard::NamedKey::Shift),
+    //         winit::keyboard::KeyLocation::Right,
+    //         winit::event::ElementState::Released,
+    //         false,
+    //     );
+
+    //     k.flush();
+
+    //     assert!(!k.shift_key());
+    // }
+
+    // #[test]
+    // fn keyboard_super_key() {
+    //     let mut k = Keyboard::new();
+
+    //     assert!(!k.super_key());
+
+    //     k.on_keyboard_input(
+    //         winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::SuperLeft),
+    //         &winit::keyboard::Key::Named(winit::keyboard::NamedKey::Super),
+    //         winit::keyboard::KeyLocation::Left,
+    //         winit::event::ElementState::Pressed,
+    //         false,
+    //     );
+
+    //     k.flush();
+
+    //     assert!(k.super_key());
+
+    //     k.on_keyboard_input(
+    //         winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::SuperLeft),
+    //         &winit::keyboard::Key::Named(winit::keyboard::NamedKey::Super),
+    //         winit::keyboard::KeyLocation::Left,
+    //         winit::event::ElementState::Released,
+    //         false,
+    //     );
+
+    //     k.flush();
+
+    //     assert!(!k.super_key());
+
+    //     k.on_keyboard_input(
+    //         winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::SuperRight),
+    //         &winit::keyboard::Key::Named(winit::keyboard::NamedKey::Super),
+    //         winit::keyboard::KeyLocation::Right,
+    //         winit::event::ElementState::Pressed,
+    //         false,
+    //     );
+
+    //     k.flush();
+
+    //     assert!(k.super_key());
+
+    //     k.on_keyboard_input(
+    //         winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::SuperRight),
+    //         &winit::keyboard::Key::Named(winit::keyboard::NamedKey::Super),
+    //         winit::keyboard::KeyLocation::Right,
+    //         winit::event::ElementState::Released,
+    //         false,
+    //     );
+
+    //     k.flush();
+
+    //     assert!(!k.super_key());
+    // }
+}

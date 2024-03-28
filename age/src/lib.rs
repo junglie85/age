@@ -12,7 +12,7 @@ pub use error::{AgeError, AgeResult};
 pub use font::{CharSet, Font, Glyph, SpriteFont};
 pub use graphics::{map_screen_to_world, map_world_to_screen, Camera, Sprite, Vertex};
 pub use image::Image;
-pub use os::{ButtonState, KeyCode, KeyLocation, Keyboard, Mouse, MouseButton, ScanCode};
+pub use os::{Key, KeyCode, KeyLocation, Keyboard, Mouse, MouseButton, ScanCode};
 pub use packer::{Entry, PackerInfo, TexturePacker};
 pub use renderer::{
     align_to, AddressMode, BindGroup, BindGroupId, BindGroupInfo, BindGroupLayout,

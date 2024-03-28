@@ -11,7 +11,7 @@ use crate::{
     graphics::Graphics,
     os::{self, Keyboard, Mouse, MouseButton},
     renderer::{Color, DrawTarget, RenderDevice, RenderPipeline, WindowSurface, WindowTarget},
-    AgeResult, BindGroup, Camera, Game, Image, KeyCode, Rect, ScanCode, Sprite, SpriteFont,
+    AgeResult, BindGroup, Camera, Game, Image, Key, KeyCode, Rect, ScanCode, Sprite, SpriteFont,
     TextureFormat, TextureInfo,
 };
 
@@ -186,8 +186,6 @@ impl App {
                         }
 
                         WindowEvent::RedrawRequested => {
-                            ctx.keyboard.flush();
-
                             ctx.device.begin_frame();
                             ctx.graphics.begin_frame(&ctx.window_target, &ctx.device);
 
@@ -201,6 +199,7 @@ impl App {
                             ctx.window.request_redraw();
 
                             ctx.mouse.flush();
+                            ctx.keyboard.flush();
                         }
 
                         WindowEvent::Resized(size) => {
@@ -356,6 +355,18 @@ impl Context {
 }
 
 impl Context {
+    pub fn key_pressed(&self, key: impl Into<Key>) -> bool {
+        self.keyboard.key_pressed(key)
+    }
+
+    pub fn key_held(&self, key: impl Into<Key>) -> bool {
+        self.keyboard.key_held(key)
+    }
+
+    pub fn key_released(&self, key: impl Into<Key>) -> bool {
+        self.keyboard.key_released(key)
+    }
+
     pub fn mouse_position(&self) -> Vec2 {
         self.mouse.position()
     }

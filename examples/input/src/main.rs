@@ -113,11 +113,11 @@ impl Game for Application {
         };
         ctx.draw_string(&self.font, text, font_size, color, position);
 
-        if ctx.keyboard().scan(ScanCode::AltRight).held {
-            ctx.draw_filled_rect(v2(0.0, 0.0), 0.0, v2(100.0, 100.0), Vec2::ZERO, Color::RED);
+        if ctx.key_held((KeyCode::Alt, KeyLocation::Left)) {
+            ctx.draw_filled_rect(v2(0.0, 0.0), 0.0, v2(100.0, 100.0), Vec2::ZERO, Color::GREEN);
         }
-        if ctx.keyboard().key_location(KeyCode::AltGr, KeyLocation::Standard).held {
-            ctx.draw_filled_rect(v2(100.0, 0.0), 0.0, v2(100.0, 100.0), Vec2::ZERO, Color::GREEN);
+        if ctx.key_held(ScanCode::AltRight) {
+            ctx.draw_filled_rect(v2(100.0, 0.0), 0.0, v2(100.0, 100.0), Vec2::ZERO, Color::RED);
         }
 
         // todo: lost focus, cancel key/button press.
